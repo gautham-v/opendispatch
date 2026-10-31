@@ -213,7 +213,7 @@ public struct ItemQuery: Sendable, Hashable {                       // GET /api/
     public var view: FeedView = .all; sourceId: Int64?; folderId: Int64?; filter: FeedFilter?
     public var search: String = ""; cursor: ItemCursor?; limit: Int = 50      // limit clamped 1...200
     public var order: FeedOrder = .latest                           // .balanced and .forYou rank the first page
-    public var sourcePreferences: [String: Int] = [:]               // For You's Show More (+1) / Show Less (-1) by feed URL
+    public var sourcePreferences: [String: Int] = [:]               // Personalized's Show More (+1) / Show Less (-1) by feed URL
     public static let defaultLimit = 50, maxQueryLength = 200, maxTerms = 8
     public init(view:sourceId:folderId:filter:search:cursor:limit:)  // all defaulted
     public var searchTerms: [String]                                // whitespace-split, ≤ 8 terms, ≤ 200 chars

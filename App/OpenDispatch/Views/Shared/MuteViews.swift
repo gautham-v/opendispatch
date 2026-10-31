@@ -55,7 +55,7 @@ struct MuteRowMenuItem: View {
     }
 }
 
-/// For You's part of a feed row's menu: why the row is where it is, Show More and Show Less. Only while the list is in For
+/// Personalized's part of a feed row's menu: why the row is where it is, Show More and Show Less. Only while the list is in For
 /// You order, which is the only order they change.
 struct ForYouRowMenuItems: View {
     let item: FeedItem

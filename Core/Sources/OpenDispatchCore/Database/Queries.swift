@@ -156,7 +156,7 @@ public enum Queries {
     /// newer item from its source in the page; ties keep time order. The cursor is the page's oldest item, so the
     /// next pages go on newest first below it. In a topic's list, where every result shares the topic as its source,
     /// an item's site stands for its source (x.com, bsky.app, youtube.com, each publisher), and times are story times.
-    /// With a `profile` (For You) each item also counts as newer or older by how often its source is opened.
+    /// With a `profile` (Personalized) each item also counts as newer or older by how often its source is opened.
     static let balancedWindowCount = 300
     static let balancedWindowSpan: TimeInterval = 48 * 3600
     static let balancedPenalty: TimeInterval = 2 * 3600

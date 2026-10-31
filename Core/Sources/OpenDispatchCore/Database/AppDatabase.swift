@@ -370,7 +370,7 @@ public final class AppDatabase: Sendable {
                 WHERE content_html IS NOT NULL AND url LIKE '%reddit.com/r/%/comments/%'
                 """)
         }
-        // For You and "Sources for you". Per device, not synced: rows that came on screen, every open (history keeps only the
+        // Personalized and "Sources for you". Per device, not synced: rows that came on screen, every open (history keeps only the
         // last), and sources removed or dismissed, so a suggestion doesn't offer them straight back. History's sources that
         // are no longer in the library were removed before anything remembered it.
         m.registerMigration("v20-reading-signals") { db in

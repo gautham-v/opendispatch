@@ -83,7 +83,7 @@ extension FeedOrder {
         switch self {
         case .latest: "Latest"
         case .balanced: "Balanced"
-        case .forYou: "For You"
+        case .forYou: "Personalized"
         }
     }
 }
@@ -195,7 +195,7 @@ struct AppSettings: Codable, Equatable, Sendable {
     var sendHighlightsToReadwise: Bool = true
     /// How All, its Articles, Posts, Video and Podcasts views, and topics order items (`AppModel.listOrder`).
     var feedOrder: FeedOrder = .balanced
-    /// For You's Show More (+1) and Show Less (-1) by feed URL. In the settings so they sync with no new record type.
+    /// Personalized's Show More (+1) and Show Less (-1) by feed URL. In the settings so they sync with no new record type.
     var sourcePreferences: [String: Int] = [:]
     /// Leave read items out of the lists (not Saved or searches); they stay in History.
     var hideReadItems: Bool = false

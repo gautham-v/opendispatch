@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// What For You and "Sources for you" work from: the reading profile, suggestions, and the local record of rows seen, every
+/// What Personalized and "Sources for you" work from: the reading profile, suggestions, and the local record of rows seen, every
 /// open, and sources removed. These tables are per device and don't sync.
 extension Queries {
 

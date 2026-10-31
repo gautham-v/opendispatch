@@ -14,13 +14,13 @@ public struct SourceAffinity: Sendable, Hashable {
     }
 }
 
-/// What For You order knows about the user: an affinity per source, by feed URL, counted on the device from History
+/// What Personalized order knows about the user: an affinity per source, by feed URL, counted on the device from History
 /// (which syncs, so opens on another device count too). Nothing about it leaves the device.
 public struct ReadingProfile: Sendable, Hashable {
     /// How far back it looks. Items are pruned after 14 days, so a longer window would count opens without their rows.
     public static let window: TimeInterval = 14 * 86_400
     /// Rows of evidence a source needs before its own rate outweighs the overall one: a new or quiet source starts at the
-    /// user's average, so For You stays close to Balanced until there is something to go on.
+    /// user's average, so Personalized stays close to Balanced until there is something to go on.
     public static let blendRows = 20.0
     /// Hours of head start for a source opened twice as often as average, the strength tested on real reading.
     public static let hoursPerDoubling = 6.0

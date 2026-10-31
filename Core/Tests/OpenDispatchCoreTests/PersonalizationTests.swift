@@ -3,7 +3,7 @@ import GRDB
 import Testing
 @testable import OpenDispatchCore
 
-@Suite("For You and Sources for you")
+@Suite("Personalized and Sources for you")
 struct PersonalizationTests {
     /// Two sources with `n` rows each, the first's rows slightly newer, all published since the first open.
     private static func twoSources(_ db: AppDatabase, n: Int = 4) throws -> (loved: Source, skipped: Source) {

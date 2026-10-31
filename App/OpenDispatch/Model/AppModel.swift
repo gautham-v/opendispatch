@@ -96,7 +96,7 @@ enum UndoAction: Equatable, Sendable {
     case mute(MuteTarget, to: Bool)
     /// A source held for the toast's 6 s and deleted after it. `reopens`: its own list was showing.
     case removeSource(Int64, reopens: Bool)
-    /// For You's Show More or Show Less for a feed URL; nil is neither.
+    /// Personalized's Show More or Show Less for a feed URL; nil is neither.
     case sourcePreference(String, to: Int?)
     /// An entry added to a topic's block list; what it covers is deleted after the toast.
     case block(topic: Int64, key: String)
@@ -251,7 +251,7 @@ final class AppModel {
     var isAddSourcePresented = false
     /// What History says might be worth following (`loadSourceSuggestions`).
     private(set) var sourceSuggestions: [SourceSuggestion] = []
-    /// For the row menu's Why Here, kept current by `loadItems` while the order is For You. Not observed: the menu reads it as it opens.
+    /// For the row menu's Why Here, kept current by `loadItems` while the order is Personalized. Not observed: the menu reads it as it opens.
     @ObservationIgnored private(set) var readingProfile = ReadingProfile.empty
     @ObservationIgnored private var seenRowKeys = Set<String>()
     @ObservationIgnored private var pendingSeenRows: [(feedUrl: String, guid: String)] = []
@@ -330,7 +330,7 @@ final class AppModel {
             if settings.feedOrder != oldValue.feedOrder {
                 Task { await loadItems(reset: true) }
             } else if settings.sourcePreferences != oldValue.sourcePreferences, listOrder == .forYou, !isTopicSelected {
-                // Only a For You list changes; it may also be iCloud bringing another device's choice, so nothing else should move.
+                // Only a Personalized list changes; it may also be iCloud bringing another device's choice, so nothing else should move.
                 Task { await loadItems(reset: true, keepingDepth: true, countsNewRows: false) }
             }
             // Show and Mark list the same rows; Hide is in the query.
@@ -1568,7 +1568,7 @@ final class AppModel {
         }
     }
 
-    // MARK: For You
+    // MARK: Personalized
 
     /// A row's Show More or Show Less, or taking it back. The list re-ranks through `settings`.
     func setSourcePreference(_ source: Source, to preference: Int) {
