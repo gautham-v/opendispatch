@@ -134,8 +134,6 @@ struct ExploreSourceItem: View {
     var avatarSize: CGFloat = 36
     /// Replaces "Feed · example.com" when the row says what it is some other way.
     var meta: String?
-    /// Why it's suggested, under the name.
-    var reason: String?
     @Environment(AppModel.self) private var model
 
     var body: some View {
@@ -151,12 +149,6 @@ struct ExploreSourceItem: View {
                         .font(OFFont.ui(12))
                         .foregroundStyle(.ofMuted)
                         .lineLimit(1)
-                    if let reason {
-                        Text(reason)
-                            .font(OFFont.ui(12))
-                            .foregroundStyle(.ofBody)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 ExploreFollowButton(result: result)
@@ -187,7 +179,7 @@ struct ExploreSourceItem: View {
     }
 }
 
-/// Sources for you, at the top of Explore's start: the strongest few of what History points to, each with its reason. See
+/// Sources for you, at the top of Explore's start: the strongest few of what History points to. See
 /// All opens Add Sources, whose For You category has the rest. Nothing shows until there's something to say. The page
 /// showing it calls `loadSourceSuggestions`: this view has nothing to hang that on while it's empty.
 struct ExploreSuggestedSources<Header: View>: View {
@@ -204,7 +196,7 @@ struct ExploreSuggestedSources<Header: View>: View {
             VStack(alignment: .leading, spacing: rowSpacing) {
                 header(Button("See All") { model.isAddSourcePresented = true })
                 ForEach(suggestions) { suggestion in
-                    ExploreSourceItem(result: suggestion.result, avatarSize: avatarSize, meta: suggestion.result.subtitle, reason: suggestion.reason)
+                    ExploreSourceItem(result: suggestion.result, avatarSize: avatarSize, meta: suggestion.result.subtitle)
                         .contentShape(Rectangle())
                         .contextMenu {
                             Button("Not Interested") { Task { await model.dismissSuggestion(suggestion) } }

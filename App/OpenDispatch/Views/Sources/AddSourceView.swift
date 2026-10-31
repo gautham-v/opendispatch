@@ -208,9 +208,10 @@ struct AddSourceView: View {
         let packs = suggestionPacks
         let shown = trimmed.isEmpty ? shownPack(in: packs) : nil
         ForEach(packs.filter { $0.name == Self.forYouPack }) { categoryRow($0, selected: $0 == shown) }
-        sectionLabel("Subjects")
-            .padding(.horizontal, 9)
-            .padding(.top, 6)
+        // A gap sets For You apart from the subjects, which need no label of their own.
+        if packs.contains(where: { $0.name == Self.forYouPack }) {
+            Color.clear.frame(height: 8)
+        }
         ForEach(packs.filter { $0.name != Self.forYouPack && !StarterSources.formats.contains($0.name) }) { categoryRow($0, selected: $0 == shown) }
         sectionLabel("By format")
             .padding(.horizontal, 9)
@@ -607,7 +608,7 @@ struct AddSourceView: View {
                     AddSourceRow(title: result.title, subtitle: Self.placeLine(title: result.title, subtitle: result.subtitle), host: URLHost.host(of: result.siteUrl ?? result.feedUrl),
                                  imageUrl: result.imageUrl, url: result.feedUrl, inLibrary: model.hasSource(feedUrl: result.feedUrl),
                                  roundIcon: result.handle != nil || result.place == .youtube,
-                                 placeHost: result.imageUrl == nil ? nil : result.place.host, reason: suggestion.reason, add: add)
+                                 placeHost: result.imageUrl == nil ? nil : result.place.host, add: add)
                         .contextMenu {
                             Button("Not Interested") { Task { await model.dismissSuggestion(suggestion) } }
                         }
@@ -1086,7 +1087,7 @@ private struct AddSourceNavRow<Icon: View>: View {
             HStack(spacing: 8) {
                 icon()
                 Text(title)
-                    .font(selected ? SheetFont.primaryMedium : SheetFont.primary)
+                    .font(SheetFont.primary)
                     .foregroundStyle(.ofInk)
                     .lineLimit(1)
                 if fills { Spacer(minLength: 8) }
@@ -1124,8 +1125,6 @@ private struct AddSourceRow: View {
     var placeHost: String?
     /// Why it can't be added; the row then has no add button.
     var note: String?
-    /// Why it's suggested.
-    var reason: String?
     /// Starts adding a URL to the sheet's chosen folder.
     let add: (String) -> Void
 
@@ -1139,23 +1138,14 @@ private struct AddSourceRow: View {
             HStack(spacing: 10) {
                 icon
                 VStack(alignment: .leading, spacing: 2) {
-                    // With a reason, the place moves up beside the name and the reason takes the second line, so every row is two lines.
-                    HStack(alignment: .firstTextBaseline, spacing: 7) {
-                        Text(title)
-                            .font(SheetFont.primaryMedium)
-                            .foregroundStyle(.ofInk)
-                            .lineLimit(1)
-                        if reason != nil {
-                            Text(subtitle)
-                                .font(SheetFont.meta)
-                                .foregroundStyle(.ofMuted)
-                                .lineLimit(1)
-                        }
-                    }
-                    Text(reason ?? subtitle)
+                    Text(title)
+                        .font(SheetFont.primaryMedium)
+                        .foregroundStyle(.ofInk)
+                        .lineLimit(1)
+                    Text(subtitle)
                         .font(SheetFont.meta)
                         .foregroundStyle(.ofMuted)
-                        .lineLimit(reason == nil ? 1 : 2)
+                        .lineLimit(1)
                     if let note {
                         Text(note)
                             .font(SheetFont.meta)
