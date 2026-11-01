@@ -43,7 +43,7 @@ public struct ContentService: Sendable {
         } else {
             out = try await extractor.extractArticle(url: item.url, feed: source.kind == .rss && !source.holdsStandaloneItems ? feed : nil)
         }
-        if !out.paywalled { try await database.cacheContent(itemId: id, result: out) }
+        if !out.paywalled, !InstagramFeed.isInstagram(item.url) { try await database.cacheContent(itemId: id, result: out) }
         return ExtractResult(contentHtml: out.contentHtml, leadImage: lead ?? out.leadImage, rendered: out.rendered, paywalled: out.paywalled)
     }
 }

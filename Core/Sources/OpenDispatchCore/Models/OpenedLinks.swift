@@ -126,7 +126,7 @@ public enum OpenedLinks {
     /// likes and comment count.
     public static func item(post: DiscussionPost, now: Date = Date()) -> ParsedItem {
         let author: String? = switch post.place {
-        case .x, .bluesky:
+        case .x, .bluesky, .instagram:
             post.handle.map { h in post.author.map { "\($0) (@\(h))" } ?? "@\(h)" } ?? post.author
         case .reddit:
             post.community ?? post.author

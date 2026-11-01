@@ -3,7 +3,7 @@ import Foundation
 /// Where a post and its comments live. Reddit and X are read through a hidden web view (`DiscussionWeb`), X only once the
 /// user has signed in to it in the app; the others through their open APIs.
 public enum DiscussionPlace: String, Sendable, CaseIterable, Hashable, Codable {
-    case reddit, x, bluesky, hackerNews, youtube
+    case reddit, x, bluesky, hackerNews, youtube, instagram
 
     public var name: String {
         switch self {
@@ -12,13 +12,14 @@ public enum DiscussionPlace: String, Sendable, CaseIterable, Hashable, Codable {
         case .bluesky: "Bluesky"
         case .hackerNews: "Hacker News"
         case .youtube: "YouTube"
+        case .instagram: "Instagram"
         }
     }
 
     /// Explore searches these, in this order.
     public static let searched: [DiscussionPlace] = [.reddit, .x, .bluesky, .hackerNews]
 
-    /// The place whose thread `url` is: a Reddit post, a post on X or Bluesky, a Hacker News item, a YouTube video. Nil
+    /// The place whose thread `url` is: a Reddit post, a post on X, Bluesky or Instagram, a Hacker News item, a YouTube video. Nil
     /// for anything else (an article, a subreddit, a profile).
     public static func thread(of url: String) -> DiscussionPlace? {
         if RedditPages.isThread(url) { return .reddit }
@@ -26,6 +27,7 @@ public enum DiscussionPlace: String, Sendable, CaseIterable, Hashable, Codable {
         if SocialPosts.blueskyURL.test(url) { return .bluesky }
         if HackerNewsThreads.itemID(url) != nil { return .hackerNews }
         if OpenedLinks.youTubeVideoID(url) != nil { return .youtube }
+        if SocialPosts.network(of: url) == .instagram { return .instagram }
         return nil
     }
 }

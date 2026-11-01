@@ -1,7 +1,8 @@
 import Foundation
 
 /// Explore's post search and the reader's comments, place by place: Reddit and X through `DiscussionWeb` (a hidden web view;
-/// X only when signed in), Bluesky, Hacker News and YouTube through their open APIs. See each place's file for how it is read.
+/// X only when signed in), Bluesky, Hacker News and YouTube through their open APIs, Instagram's first comments from its post page's
+/// data (`InstagramPostData`). See each place's file for how it is read.
 public struct DefaultDiscussions: DiscussionLoading {
     /// GET when `body` is nil, otherwise a JSON POST.
     typealias Fetch = @Sendable (_ url: String, _ body: Data?) async throws -> (Data, HTTPURLResponse)
@@ -52,7 +53,7 @@ public struct DefaultDiscussions: DiscussionLoading {
             return try BlueskyThreads.posts(inSearch: try await get(BlueskyThreads.searchURL(q, now: now)))
         case .hackerNews:
             return try HackerNewsThreads.posts(inSearch: try await get(HackerNewsThreads.searchURL(q, now: now)))
-        case .youtube:
+        case .youtube, .instagram:
             return []
         }
     }
@@ -91,6 +92,11 @@ public struct DefaultDiscussions: DiscussionLoading {
             guard let token = try YouTubeComments.commentsToken(inWatch: watch) else { return DiscussionThread(entries: []) }
             let page = try await post(YouTubeComments.nextURL, YouTubeComments.body(continuation: token))
             return DiscussionThread(entries: try YouTubeComments.entries(page, depth: 0))
+        case .instagram:
+            guard let canonical = PreviewTagPost.canonicalURL(url, network: .instagram),
+                  let (data, res) = await InstagramFeed.liveFetch(canonical, SocialPosts.crawlerHeaders) else { throw DiscussionError.unavailable }
+            guard (200..<300).contains(res.statusCode) else { throw DiscussionError.notFound }
+            return InstagramPostData.thread(html: HTTP.text(data, response: res), canonical: canonical)
         case nil:
             throw DiscussionError.unavailable
         }

@@ -408,6 +408,17 @@ public final class AppDatabase: Sendable {
                 END;
                 """)
         }
+        // Instagram's reader content is read afresh each time now, and a profile opened as a link reads as its posts, without its picture as a lead.
+        m.registerMigration("v21-reread-instagram") { db in
+            try db.execute(sql: """
+                UPDATE items SET content_html = NULL, content_rendered = 0
+                WHERE content_html IS NOT NULL AND url LIKE '%instagram.com/%'
+                """)
+            try db.execute(sql: """
+                UPDATE items SET thumbnail_url = NULL
+                WHERE url LIKE '%instagram.com/%' AND url NOT LIKE '%/p/%' AND url NOT LIKE '%/reel/%' AND url NOT LIKE '%/tv/%'
+                """)
+        }
         return m
     }
 }

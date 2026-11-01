@@ -80,6 +80,7 @@ public struct DefaultContentExtractor: ContentExtractor {
 
     func extractArticleContent(url: String, feed: FeedRef?) async throws -> ExtractResult {
         let isPost = Self.isPost(url)
+        if let handle = InstagramFeed.handle(ofProfile: url) { return try await InstagramFeed.page(handle: handle) }
         if !isPost, signedIn.isSignedIn(url), let page = await extractSignedIn(url: url) { return page }
         if TweetExtraction.tweetURL.test(url) {
             if let t = try? await TweetExtraction.extract(url: url, timeout: Self.extractTimeout, session: session) { return t }

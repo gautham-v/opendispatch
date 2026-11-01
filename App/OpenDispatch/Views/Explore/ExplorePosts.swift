@@ -230,6 +230,7 @@ extension ExploreFormat {
         case .bluesky: "bsky.app"
         case .hackerNews: "news.ycombinator.com"
         case .youtube: "youtube.com"
+        case .instagram: "instagram.com"
         }
     }
 

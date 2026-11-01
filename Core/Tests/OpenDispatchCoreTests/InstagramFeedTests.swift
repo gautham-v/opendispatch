@@ -106,6 +106,62 @@ struct InstagramFeedTests {
         #expect(found.iconUrl == "https://cdn.example/avatar.jpg")
     }
 
+    /// A post's page with its page data, shaped as Instagram serves it.
+    private static let dataPage = #"""
+        <html><head><meta name="twitter:title" content="natgeo (@natgeo) • Instagram photos and videos" />
+        <meta property="og:description" content="1 likes, 2 comments - natgeo on October 2, 2026: &quot;Short&quot;." />
+        <meta property="og:image" content="https://cdn.example/square.jpg" /></head><body>
+        <script type="application/json" data-sjs>{"other":1}</script>
+        <script type="application/json" data-sjs>{"require":[["x",[{"__bbox":{"result":{"data":{"xig_polaris_media":{
+          "if_not_gated_logged_out":{"taken_at":1793474361,"comment_count":76,"caption":{"text":"The whole caption"},
+            "user":{"username":"natgeo","full_name":"National Geographic","profile_pic_url":"https://cdn.example/me.jpg"},
+            "carousel_media":[
+              {"display_uri":"https://cdn.example/1.jpg","original_width":1080,"original_height":1350,"media_type":1},
+              {"display_uri":"https://cdn.example/2.jpg","media_type":2,"video_versions":[{"url":"https://cdn.example/2.mp4"}]}]},
+          "comments_connection":{"edges":[
+            {"node":{"pk":"11","created_at":1793475619,"text":"Lovely","comment_like_count":3,"is_covered":false,"user":{"username":"ann","profile_pic_url":"https://cdn.example/ann.jpg"}}},
+            {"node":{"pk":"12","created_at":1793475620,"text":"Hidden","is_covered":true,"user":{"username":"bob"}}},
+            {"node":{"pk":"13","created_at":1793475621,"text":"Mine","user":{"username":"natgeo"}}}]}
+        }}}}}]]]}</script></body></html>
+        """#
+
+    @Test func aPostsPageDataGivesMoreThanItsTags() throws {
+        let canonical = "https://www.instagram.com/p/abc/"
+        let post = try #require(PreviewTagPost.parse(html: Self.dataPage, canonical: canonical, network: .instagram))
+        #expect(post.author.name == "National Geographic")
+        #expect(post.author.avatar == "https://cdn.example/me.jpg")
+        #expect(post.date == Date(timeIntervalSince1970: 1793474361))
+        #expect(post.title == "The whole caption")
+        #expect(post.media.map(\.url) == ["https://cdn.example/1.jpg", "https://cdn.example/2.mp4"])
+        #expect(post.media[1].kind == .video)
+        #expect(post.media[1].poster == "https://cdn.example/2.jpg")
+        #expect(post.leadImage == "https://cdn.example/square.jpg")
+    }
+
+    @Test func aPostsCommentsComeFromItsPage() throws {
+        let canonical = "https://www.instagram.com/p/abc/"
+        #expect(DiscussionPlace.thread(of: canonical) == .instagram)
+        #expect(DiscussionPlace.thread(of: "https://www.instagram.com/natgeo/") == nil)
+        let thread = InstagramPostData.thread(html: Self.dataPage, canonical: canonical)
+        #expect(thread.total == 76)
+        let comments = thread.entries.compactMap(\.comment)
+        #expect(comments.map(\.author) == ["@ann", "@natgeo"])
+        #expect(comments[0].score == 3)
+        #expect(comments[0].url == "https://www.instagram.com/p/abc/c/11/")
+        #expect(comments[1].byAuthor)
+    }
+
+    @Test func aProfileReadsAsItsPostsNewestFirst() async throws {
+        let out = try await InstagramFeed.page(handle: "natgeo", links: { _ in ["/natgeo/p/older/", "/natgeo/p/newer/", "/natgeo/p/bad/"] }, fetch: { url, _ in
+            if url.contains("bad") { return (Data(), Self.response(url, 404)) }
+            return (Self.postPage(day: url.contains("newer") ? "October 30, 2026" : "October 2, 2026", caption: url.contains("newer") ? "Newer" : "Older"), Self.response(url))
+        })
+        let html = try #require(out.contentHtml)
+        let newer = try #require(html.range(of: "Newer")), older = try #require(html.range(of: "Older"))
+        #expect(newer.lowerBound < older.lowerBound)
+        #expect(html.contains("Open on Instagram"))
+    }
+
     @Test func aMissingAccountIsNotAdded() async {
         let detector = DefaultFeedDetector(parser: DefaultFeedParser(), scraper: DefaultPageScraper(), fetch: { url, _ in
             (Data("<html><head><title>Instagram</title></head></html>".utf8), Self.response(url))

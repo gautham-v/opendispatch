@@ -3,7 +3,8 @@ import Foundation
 /// A post on Threads or Instagram, from the preview tags (Open Graph and Twitter) their pages give link-preview
 /// crawlers: the author and the text or caption, and the post's picture. Both gate their pages behind a login for
 /// a browser, so this is the only no-account source; it reads no avatar, and Threads gives no date. A video is its
-/// still. When a network stops serving the tags the post can't be read and the reader says so.
+/// still. On Instagram the same page's data (`InstagramPostData`) goes further: the exact time, whole caption, avatar, every photo of
+/// a carousel and a reel's video. When a network stops serving the tags the post can't be read and the reader says so.
 enum PreviewTagPost {
     typealias DOM = ExtractionDOM
     typealias Media = SocialPost.Media
@@ -15,9 +16,9 @@ enum PreviewTagPost {
         guard var post = parse(html: HTTP.text(data, response: res), canonical: canonical, network: network) else { return nil }
         // The embed page adds what the preview tags lack: the author's picture, and Threads' date. Best effort.
         let embed = network == .threads ? canonical + "/embed" : canonical + "embed/captioned/"
-        if let (data, res) = await fetch(embed, SocialPosts.crawlerHeaders), (200..<300).contains(res.statusCode) {
+        if post.author.avatar == nil || post.date == nil, let (data, res) = await fetch(embed, SocialPosts.crawlerHeaders), (200..<300).contains(res.statusCode) {
             let extra = parseEmbed(html: HTTP.text(data, response: res))
-            post.author.avatar = extra.avatar
+            post.author.avatar = post.author.avatar ?? extra.avatar
             post.date = post.date ?? extra.date
         }
         return post
@@ -70,6 +71,7 @@ enum PreviewTagPost {
         guard let doc = DOM.parseDocument(html) else { return nil }
         let meta = PageMeta.meta(in: doc)
         var name: String?, handle: String?, text: String?, date: Date?
+        var data: InstagramPostData?
         switch network {
         case .threads:
             guard let m = meta("og:title").flatMap({ ScrapingText.firstGroups(threadsTitle, $0) }) else { return nil }
@@ -78,10 +80,11 @@ enum PreviewTagPost {
         case .instagram:
             let d = meta("og:description", "description").flatMap { ScrapingText.firstGroups(instagramDescription, $0) }
             let t = meta("twitter:title", "og:title").flatMap { ScrapingText.firstGroups(instagramTitle, $0) }
-            guard let handle0 = t?[2] ?? d?[1] else { return nil }
-            name = t?[1]; handle = handle0
-            text = d?[3]
-            date = d?[2].flatMap { dayFormatter.date(from: $0) }.map { $0.addingTimeInterval(12 * 3600) }
+            data = InstagramPostData.parse(html: html, canonical: canonical)
+            guard let handle0 = data?.handle ?? t?[2] ?? d?[1] else { return nil }
+            name = data?.name ?? t?[1]; handle = handle0
+            text = data?.caption ?? d?[3]
+            date = data?.date ?? d?[2].flatMap { dayFormatter.date(from: $0) }.map { $0.addingTimeInterval(12 * 3600) }
         default:
             return nil
         }
@@ -89,9 +92,15 @@ enum PreviewTagPost {
         let paragraphs = SocialPost.paragraphs(fromPlain: text ?? "")
         var media: [Media] = []
         if let image = meta("og:image"), !image.contains(profilePicture) { media = [Media(kind: .photo, url: image)] }
+        if let found = data?.media, !found.isEmpty {
+            // The list's picture stays the small square.
+            let thumb = media.first?.url
+            media = found
+            media[0].thumb = thumb
+        }
         guard !paragraphs.isEmpty || !media.isEmpty else { return nil }
         let profile = network == .threads ? "https://www.threads.com/@\(handle)" : "https://www.instagram.com/\(handle)/"
-        return SocialPost(network: network, url: canonical, author: .init(name: name ?? handle, handle: handle, profile: profile),
+        return SocialPost(network: network, url: canonical, author: .init(name: name ?? handle, handle: handle, avatar: data?.avatar, profile: profile),
                           paragraphs: paragraphs, date: date, media: media)
     }
 }
