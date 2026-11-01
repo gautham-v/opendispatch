@@ -23,8 +23,6 @@ public struct SourceSearchResult: Sendable, Hashable, Identifiable {
 
     /// An X account, which is a scraped page source (`PageScraping`) rather than a feed.
     public var isXAccount: Bool { place == .x }
-    /// Instagram can be shown but not followed: it has no public feed.
-    public var canFollow: Bool { place != .instagram }
     /// How its items read, which the sheet's chips filter by.
     public var readType: SourceType { place.readType }
 
@@ -282,7 +280,7 @@ public enum SourceSearch {
         let bare = host.lowercased().hasPrefix("www.") ? String(host.lowercased().dropFirst(4)) : host.lowercased()
         if bare == "bsky.app", segments.count == 2, segments[0] == "profile" { return .bluesky(handle: segments[1]) }
         if FeedDetection.redditFeedURL(url) != nil, segments.first == "r", segments.count >= 2 { return .reddit(community: segments[1]) }
-        if bare == "instagram.com", segments.count == 1 { return .instagram(handle: segments[0]) }
+        if let handle = InstagramFeed.handle(ofProfile: url) { return .instagram(handle: handle) }
         if let place = FeedDetection.noFeedPlace(url) { return .noFeed(place: place) }
         guard FeedDetection.isYouTubeURL(url), !c.path.hasPrefix("/feeds/") else { return nil }
         if let id = FeedDetection.youtubeChannelID(fromURL: url) { return .youtubeChannel(id: id) }

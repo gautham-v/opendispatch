@@ -194,8 +194,11 @@ struct SourceSearchTests {
 
     @Test func detectorSaysWhenAPlaceHasNoFeed() async {
         let detector = DefaultFeedDetector(parser: DefaultFeedParser(), scraper: DefaultPageScraper(), fetch: { _, _ in throw HTTPError.timedOut })
-        await #expect(throws: FeedDetectionError("Instagram has no public feed, so its posts can't be followed here.")) {
-            _ = try await detector.detect("https://www.instagram.com/natgeo/")
+        await #expect(throws: FeedDetectionError("TikTok has no public feed, so its posts can't be followed here.")) {
+            _ = try await detector.detect("https://www.tiktok.com/@natgeo")
+        }
+        await #expect(throws: FeedDetectionError("To follow someone on Instagram, paste the link to their profile.")) {
+            _ = try await detector.detect("https://www.instagram.com/p/abc/")
         }
     }
 
@@ -242,7 +245,6 @@ struct SourceSearchTests {
         #expect(r?.title == "National Geographic")
         #expect(r?.handle == "natgeo")
         #expect(r?.audience == "268M followers")
-        #expect(r?.canFollow == false)
     }
 
     @Test func shownRowsStayPutWhenMoreLand() {

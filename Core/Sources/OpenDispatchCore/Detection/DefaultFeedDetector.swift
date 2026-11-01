@@ -66,8 +66,11 @@ public struct DefaultFeedDetector: FeedDetector {
             r.url = "\(RedditPages.origin)/\(path[0])/\(path[1])/"
             return r
         }
+        if let handle = InstagramFeed.handle(ofProfile: url) {
+            return try await detectInstagram(handle)
+        }
         if let place = FeedDetection.noFeedPlace(url) {
-            throw FeedDetectionError("\(place) has no public feed, so its posts can't be followed here.")
+            throw FeedDetectionError(FeedDetection.noFeedMessage(place))
         }
 
         let (data, res, finalURL) = try await fetchUserURL(url)
@@ -99,6 +102,20 @@ public struct DefaultFeedDetector: FeedDetector {
                                 kind: .page, group: SourceGroup.blogs)
         }
         throw FeedDetectionError("No RSS/Atom feed or article links found at that URL")
+    }
+
+    // MARK: - Instagram
+
+    /// A profile, named by its preview tags; its posts are read at refresh (`InstagramFeed`).
+    private func detectInstagram(_ handle: String) async throws -> DetectedFeed {
+        let (data, res) = try await fetch(InstagramFeed.profileURL(handle), SocialPosts.crawlerHeaders)
+        guard Self.isOK(res) || res.statusCode == 404 else { throw HTTPError.status(res.statusCode) }
+        // A missing account answers 200 too, without the tags.
+        guard Self.isOK(res), let profile = DefaultSocialAccounts.instagramProfile(html: HTTP.text(data, response: res)) else {
+            throw FeedDetectionError("Instagram has no account named @\(handle).")
+        }
+        let url = InstagramFeed.profileURL(profile.handle ?? handle)
+        return DetectedFeed(title: profile.title, url: url, feedUrl: url, kind: .page, group: SourceGroup.blogs, iconUrl: profile.imageUrl)
     }
 
     // MARK: - YouTube

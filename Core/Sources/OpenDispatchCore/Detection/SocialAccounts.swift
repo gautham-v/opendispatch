@@ -3,8 +3,8 @@ import SwiftSoup
 
 /// Finds accounts on the other places "Add sources" searches, each landing on its own. All without an account: Bluesky's public AppView
 /// and its RSS feeds, a Mastodon server's search and each profile's `.rss`, Reddit's community search read in the hidden web view
-/// (`DiscussionWeb`, Reddit refuses plain requests to it) with each community's `.rss`. Instagram's profile preview names an account, but
-/// its public pages list no posts, so it can only be shown and never followed.
+/// (`DiscussionWeb`, Reddit refuses plain requests to it) with each community's `.rss`. Instagram's profile preview names an account for a
+/// pasted link; its posts are read by `InstagramFeed`.
 public protocol SocialAccountSearching: Sendable {
     func bluesky(_ query: String) async throws -> [SourceSearchResult]
     func blueskyProfile(handle: String) async throws -> SourceSearchResult?

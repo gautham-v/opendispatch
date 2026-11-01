@@ -10,7 +10,7 @@ import os
 /// The sites a signed-in session counts for. The app's web views share one persistent data store
 /// (`WKWebsiteDataStore.default()`), so signing in on the sign-in sheet signs the hidden views in too.
 public enum WebAccount: String, Sendable, CaseIterable, Identifiable {
-    case x, reddit
+    case x, reddit, instagram
 
     public var id: String { rawValue }
 
@@ -18,6 +18,7 @@ public enum WebAccount: String, Sendable, CaseIterable, Identifiable {
         switch self {
         case .x: "X"
         case .reddit: "Reddit"
+        case .instagram: "Instagram"
         }
     }
 
@@ -26,6 +27,7 @@ public enum WebAccount: String, Sendable, CaseIterable, Identifiable {
         switch self {
         case .x: URL(string: "https://x.com/i/flow/login")!
         case .reddit: URL(string: "https://www.reddit.com/login/")!
+        case .instagram: URL(string: "https://www.instagram.com/accounts/login/")!
         }
     }
 
@@ -34,6 +36,7 @@ public enum WebAccount: String, Sendable, CaseIterable, Identifiable {
         switch self {
         case .x: "auth_token"
         case .reddit: "reddit_session"
+        case .instagram: "sessionid"
         }
     }
 
@@ -41,6 +44,7 @@ public enum WebAccount: String, Sendable, CaseIterable, Identifiable {
         switch self {
         case .x: ["x.com", "twitter.com"]
         case .reddit: ["reddit.com"]
+        case .instagram: ["instagram.com"]
         }
     }
 
@@ -106,6 +110,9 @@ extension WebAccount {
 /// of their own and Topics' searches another, so the reader never waits behind a topic refresh; each view reads one page
 /// at a time, and a page read in the last few minutes is reused. It needs the user signed in to X in the app (`WebAccount.x`).
 ///
+/// Instagram: one view opens an account's profile, one at a time, and hands back the links to the posts it drew (`InstagramFeed`).
+/// It reads no more than a visitor sees and needs no sign-in unless Instagram asks a visitor for one.
+///
 /// Images, media and fonts are never loaded. Everything here runs on the main actor; the views are made on first use.
 @MainActor
 public final class DiscussionWeb: NSObject {
@@ -125,6 +132,9 @@ public final class DiscussionWeb: NSObject {
     private let xBack = XLane()
     /// X pages read in the last few minutes (those X answered), by address.
     private var xPages: [String: (at: Date, page: XPage)] = [:]
+    private var instagram: SiteView?
+    /// The profiles waiting for Instagram's view.
+    private var instagramQueue: Task<Void, Never>?
     private var rules: WKContentRuleList?
     private var rulesLoaded = false
 
@@ -140,6 +150,8 @@ public final class DiscussionWeb: NSObject {
         case .x:
             for lane in [xFront, xBack] { lane.view = nil }
             xPages = [:]
+        case .instagram:
+            instagram = nil
         }
     }
 
@@ -373,6 +385,59 @@ public final class DiscussionWeb: NSObject {
         return statusHref.firstMatch(cell)?[1] ?? nil
     }
 
+    // MARK: Instagram
+
+    /// The links to the posts on a profile, or nil when a page can't run now (a background refresh, which isn't a failure of the source).
+    func instagramPostLinks(_ handle: String) async throws -> [String]? {
+        guard (try? Self.requireForeground()) != nil else { return nil }
+        let previous = instagramQueue
+        let task = Task { @MainActor () throws -> [String] in
+            _ = await previous?.value
+            return try await self.readInstagram(handle)
+        }
+        instagramQueue = Task { _ = try? await task.value }
+        return try await task.value
+    }
+
+    private func readInstagram(_ handle: String) async throws -> [String] {
+        let view: SiteView
+        if let existing = instagram, !existing.terminated {
+            view = existing
+        } else {
+            view = await newView(.instagram)
+            instagram = view
+        }
+        try await view.load(URL(string: InstagramFeed.profileURL(handle))!)
+        let read = """
+            const links = [...document.querySelectorAll('a[href*="/p/"], a[href*="/reel/"]')].map((a) => a.getAttribute("href"));
+            const text = document.body ? document.body.innerText : "";
+            const wall = location.pathname.startsWith("/accounts/login") || !!document.querySelector("input[name=password], input[name=pass]");
+            return { links, wall, closed: /account is private/i.test(text), gone: /page isn.t available/i.test(text) };
+            """
+        var links: [String] = []
+        var page: [String: Any] = [:]
+        let started = Date()
+        try? await view.waitUntil(timeout: 15) { view in
+            page = try await view.call(read, in: Self.world) as? [String: Any] ?? [:]
+            links = page["links"] as? [String] ?? []
+            return !links.isEmpty || page["closed"] as? Bool == true || page["gone"] as? Bool == true
+                || (page["wall"] as? Bool == true && Date().timeIntervalSince(started) > 3)
+        }
+        if !links.isEmpty {
+            // The grid draws row by row.
+            try await Task.sleep(nanoseconds: 500_000_000)
+            let last = try? await view.call(read, in: Self.world) as? [String: Any]
+            return last?["links"] as? [String] ?? links
+        }
+        log.info("instagram \(handle, privacy: .public) no posts at \(view.webView.url?.absoluteString ?? "?", privacy: .public)")
+        if page["closed"] as? Bool == true { throw FeedDetectionError("This Instagram account is private.") }
+        if page["gone"] as? Bool == true { throw FeedDetectionError("Instagram has no account named @\(handle).") }
+        if page["wall"] as? Bool == true {
+            throw FeedDetectionError("Instagram asked for a sign-in to show this account. Sign in under Settings \u{203A} Integrations.")
+        }
+        throw FeedDetectionError("Instagram didn\u{2019}t show this account\u{2019}s posts. Trying again at the next refresh.")
+    }
+
     /// A web view's pages don't run while an iPhone app is in the background (a background refresh), so don't start one.
     private static func requireForeground() throws {
         #if os(iOS)
@@ -418,7 +483,7 @@ public final class DiscussionWeb: NSObject {
         if account == .x {
             config.userContentController.addUserScript(WKUserScript(source: Self.xCapture, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
-        return SiteView(configuration: config, userAgent: account == .x ? WebAccount.browserUserAgent : nil)
+        return SiteView(configuration: config, userAgent: account == .reddit ? nil : WebAccount.browserUserAgent)
     }
 
     /// Blocks images, media and fonts in the hidden views; nil if WebKit won't compile the rules.

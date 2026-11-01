@@ -110,9 +110,17 @@ public enum FeedDetection {
         }
     }
 
-    /// The name of a place whose public pages have no feed or posts to follow, for a link to one of them.
+    /// Why a link to such a place can't be added.
+    public static func noFeedMessage(_ place: String) -> String {
+        place == "Instagram"
+            ? "To follow someone on Instagram, paste the link to their profile."
+            : "\(place) has no public feed, so its posts can't be followed here."
+    }
+
+    /// The name of a place whose public pages have no feed or posts to follow, for a link to one of them. An Instagram profile
+    /// can be followed (`InstagramFeed`); any other Instagram page can't.
     public static func noFeedPlace(_ url: String) -> String? {
-        guard let host = URLComponents(string: url)?.host?.lowercased() else { return nil }
+        guard InstagramFeed.handle(ofProfile: url) == nil, let host = URLComponents(string: url)?.host?.lowercased() else { return nil }
         let places = ["instagram.com": "Instagram", "threads.net": "Threads", "threads.com": "Threads", "tiktok.com": "TikTok",
                       "linkedin.com": "LinkedIn", "facebook.com": "Facebook", "twitch.tv": "Twitch"]
         return places.first { host == $0.key || host.hasSuffix("." + $0.key) }?.value

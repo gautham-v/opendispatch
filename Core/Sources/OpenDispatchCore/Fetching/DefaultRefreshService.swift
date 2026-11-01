@@ -41,6 +41,8 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
     let topicSearch: any TopicSearching
     let embedCheck: any YouTubeEmbedChecking
     let embedCheckBudget: TimeInterval
+    let instagramLinks: InstagramFeed.PostLinks
+    let instagramFetch: SocialPosts.Fetch
 
     /// `topicSearch` finds a topic's matches outside the subscriptions and `embedCheck` asks whether a video plays in other
     /// apps; tests pass fakes.
@@ -55,7 +57,9 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
         database: AppDatabase, parser: any FeedParser, scraper: any PageScraper, fetch: @escaping RefreshFeedFetch,
         fallbacks: [String: [String]] = Seed.feedFallbacks, feedTimeout: TimeInterval = Self.feedTimeout,
         concurrency: Int = Self.sourceConcurrency, topicSearch: any TopicSearching = DefaultTopicSearch(),
-        embedCheck: any YouTubeEmbedChecking = DefaultYouTubeEmbedCheck(), embedCheckBudget: TimeInterval = Self.embedCheckBudget
+        embedCheck: any YouTubeEmbedChecking = DefaultYouTubeEmbedCheck(), embedCheckBudget: TimeInterval = Self.embedCheckBudget,
+        instagramLinks: @escaping InstagramFeed.PostLinks = InstagramFeed.livePostLinks,
+        instagramFetch: @escaping SocialPosts.Fetch = InstagramFeed.liveFetch
     ) {
         self.database = database
         self.parser = parser
@@ -67,6 +71,8 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
         self.topicSearch = topicSearch
         self.embedCheck = embedCheck
         self.embedCheckBudget = embedCheckBudget
+        self.instagramLinks = instagramLinks
+        self.instagramFetch = instagramFetch
     }
 
     /// fetchFeedText: GET with the feed Accept header; non-2xx throws "HTTP <status>". A Reddit feed refused is read in the web view.
@@ -259,7 +265,10 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
         if src.kind == .page {
             // Fetch only article pages not handled before: stored items plus `seen_urls` (too old to keep, or not articles).
             let seen = src.seenUrls ?? []
-            let r = try await scraper.scrape(listingURL: src.feedUrl, known: Set(seen).union(stored.map(\.url)), budget: nil)
+            let known = Set(seen).union(stored.map(\.url))
+            let r = InstagramFeed.handle(ofProfile: src.feedUrl) != nil
+                ? try await InstagramFeed.read(profile: src.feedUrl, known: known, links: instagramLinks, fetch: instagramFetch)
+                : try await scraper.scrape(listingURL: src.feedUrl, known: known, budget: nil)
             var seenSet = Set<String>()
             let seenUrls = (r.processed + seen).filter { seenSet.insert($0).inserted }.prefix(Self.maxSeenURLs)
             return (r.items, SourceFetchUpdate(seenUrls: Array(seenUrls)))

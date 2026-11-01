@@ -444,7 +444,7 @@ struct AddSourceView: View {
                 } else {
                     ForEach(links, id: \.self) { link in
                         AddSourceRow(title: Self.shortLink(link), subtitle: "Link", host: URLHost.host(of: link),
-                                     imageUrl: nil, url: link, inLibrary: false, note: FeedDetection.noFeedPlace(link).map(Self.noFeedNote), add: add)
+                                     imageUrl: nil, url: link, inLibrary: false, note: FeedDetection.noFeedPlace(link).map(FeedDetection.noFeedMessage), add: add)
                     }
                 }
                 if links.count == 1, resolvedAccount == nil, !results.isEmpty {
@@ -490,7 +490,7 @@ struct AddSourceView: View {
                      host: URLHost.host(of: result.siteUrl ?? result.feedUrl), imageUrl: result.imageUrl, url: result.feedUrl,
                      inLibrary: model.hasSource(feedUrl: result.feedUrl), roundIcon: result.handle != nil,
                      placeHost: result.imageUrl == nil ? nil : result.place.host,
-                     note: result.canFollow ? nil : Self.noFeedNote(result.place.name), add: add)
+                     add: add)
     }
 
     private var xSignInHint: some View {
@@ -1010,10 +1010,6 @@ struct AddSourceView: View {
             let lead = playsOnlyOnYouTube ? "Plays on YouTube only" : result.place.name
             return [lead, result.handle.map { "@" + $0 }, result.audience].compactMap { $0 }.joined(separator: " · ")
         }
-    }
-
-    static func noFeedNote(_ place: String) -> String {
-        "\(place) has no public feed, so its posts can't be followed here."
     }
 
     /// A link without its scheme or a bare trailing slash, for the row's second line.

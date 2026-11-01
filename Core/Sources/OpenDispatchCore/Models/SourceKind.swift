@@ -35,11 +35,11 @@ public enum SourceGroup {
     public static let topics = "topics"
 }
 
-/// Post sources (X/Twitter, Bluesky, Threads, Mastodon profiles). Port of POST_SOURCE_RE in
+/// Post sources (X/Twitter, Bluesky, Threads, Mastodon, Instagram profiles). Port of POST_SOURCE_RE in
 /// src/lib/folders.ts: `^https?://(www\.|mobile\.)?(x\.com|twitter\.com|bsky\.app|threads\.net|mastodon\.[a-z]+)/`, case-insensitive,
 /// plus the host alone: a source added from a feed stores only its site's origin, like `https://bsky.app`.
 public enum PostSource {
-    private static let hosts: Set<String> = ["x.com", "twitter.com", "bsky.app", "threads.net", "reddit.com"]
+    private static let hosts: Set<String> = ["x.com", "twitter.com", "bsky.app", "threads.net", "reddit.com", "instagram.com"]
 
     public static func isPostURL(_ url: String) -> Bool {
         let s = url.lowercased()

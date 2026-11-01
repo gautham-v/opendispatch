@@ -1263,7 +1263,7 @@ Explore searches posts, and the reader shows comments under a thread and under e
   (`AppModel.didCloseSignIn`, which also searches X for Explore's query). `ExploreStore.posts` by place, `shownPostPlace` / `pickPostPlace`, `retryPosts`, `ExploreTarget.post`.
   `ReaderComments` (`Views/Reader/ReaderComments.swift`) under the article (`ReaderComments.target(for:)`: the item's own thread, loaded at once, or its `hnCommentsUrl`,
   loaded on "Show comments") and in a video's Comments tab (`heading: false`, the count goes to the tab through `onTotal`): a heading with the count and "On <place>", rails per depth, the author line folds a comment and its replies,
-  more rows load in place, X signed out shows the sign-in note. Settings › Integrations › Signed-in sites: X and Reddit, Sign In… / Sign Out.
+  more rows load in place, X signed out shows the sign-in note. Settings › Integrations › Signed-in sites: X, Reddit and Instagram, Sign In… / Sign Out.
 
 ### Topics from X and Bluesky — 2026-10-29
 - Places: `TopicPlaces` gains `x` and `bluesky` (on by default, and a stored record without them reads them as on); `TopicPlace` gains `.x`, `.bluesky`
