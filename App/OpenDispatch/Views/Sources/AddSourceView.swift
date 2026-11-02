@@ -979,7 +979,7 @@ struct AddSourceView: View {
         importStatus = .init(text: "Importing…", error: false)
         do {
             let r = try await model.importOPML(from: url)
-            importStatus = .init(text: SettingsOPMLButtons.summary(r), error: r.added == 0 && !r.errors.isEmpty)
+            importStatus = .init(text: SettingsOPMLMenu.summary(r), error: r.added == 0 && !r.errors.isEmpty)
             if r.added > 0 { Task { await model.refresh(force: true) } }
         } catch {
             importStatus = .init(text: "Import failed: \(HTTP.message(error))", error: true)

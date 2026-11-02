@@ -72,6 +72,11 @@ public struct Source: Sendable, Hashable, Identifiable {
         return name.isEmpty ? title : name
     }
 
+    /// The @handle in an X profile's title, without the @ ("Kun Chen (@kunchenguid) on X" gives "kunchenguid").
+    public var titleHandle: String? {
+        TextFormat.splitHandle(title.hasSuffix(" on X") ? String(title.dropLast(5)) : title).handle
+    }
+
     /// A saved keyword search (`Topic`). Tells by the reserved feed URL, not `kind`: in a list row `kind`
     /// is rewritten per item (`shown(for:)`).
     public var isTopic: Bool { Topic.isTopicFeedURL(feedUrl) }

@@ -496,6 +496,15 @@ struct PinHideTests {
         #expect(short("World news | The Guardian") == "World news | The Guardian")
     }
 
+    @Test func titleHandleReadsAnXProfilesHandle() {
+        func handle(_ title: String) -> String? {
+            Source(title: title, url: "https://x.com/a", feedUrl: "https://x.com/a", kind: .page, group: "blogs").titleHandle
+        }
+        #expect(handle("Adam Schefter (@AdamSchefter) on X") == "AdamSchefter")
+        #expect(handle("Claude(@claudeai)") == "claudeai")
+        #expect(handle("World news | The Guardian") == nil)
+    }
+
     @Test func pinningUnhidesAndHidingUnpins() async throws {
         let db = try Fixture.db()
         let s = try Fixture.source(db)

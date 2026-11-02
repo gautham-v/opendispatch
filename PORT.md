@@ -679,7 +679,7 @@ Design (App/OpenDispatch/Design):
 | Send to: one target sends directly, two show a menu, none opens Settings → Integrations (send-to.tsx) | Views/Reader/ (uses AppModel.integrations/send/showSettings) |
 | Phone Sources tab: folders (count) and sources list, open folder/source feed with back to Sources, Add source (sources-page.tsx) | Views/Sources/SourcesView.swift |
 | Add source dialog: URL field, normalize errors inline, detecting spinner, error message, success closes (add-source.tsx) | Views/Sources/AddSourceView.swift |
-| Settings: Sources pane (grouped by folder, last fetched / last error, rename, move, remove with confirm, open feed, Import/Export OPML with result summary), Appearance (theme, reader font, text size), Playback (autoplay, theater), Integrations (Readwise token with hint/clear/test, webhook URL with save/clear/test) (settings-dialog.tsx) | Views/Settings/SettingsView.swift (+ pane files in Views/Settings/) |
+| Settings: Sources pane (search, closed folders with counts, last error, rename, move, remove with confirm, open feed, Import/Export OPML in a menu with result summary), Appearance (theme, reader font, text size), Playback (autoplay, theater), Integrations (Readwise token with hint/clear/test, webhook URL with save/clear/test) (settings-dialog.tsx) | Views/Settings/SettingsView.swift (+ pane files in Views/Settings/) |
 | Shortcuts overlay (shortcuts-dialog.tsx + SHORTCUTS in use-keyboard.ts) | Views/Settings/ShortcutsView.swift |
 | Theme system/light/dark (use-settings.ts, layout.tsx) | AppSettings + RootView .preferredColorScheme (done) |
 | PWA manifest, service worker, offline cache, APP_PASSWORD gate, CRON_SECRET, Vercel | Not ported (native app, local DB is the offline cache) |
