@@ -24,7 +24,7 @@ struct ReaderSiteVideo: View {
                 #if os(iOS)
                 ReaderBackgroundVideoPlayer(player: player)
                 #else
-                VideoPlayer(player: player)
+                ReaderScrollingVideoPlayer(player: player)
                 #endif
             } else {
                 posterButton
@@ -127,6 +127,35 @@ struct ReaderSiteVideo: View {
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 }
+
+#if os(macOS)
+/// AVKit's player, whose subviews keep a scroll with the pointer on them: this view takes every scroll and hands it to
+/// the reader's ScrollView. Clicks reach the controls as usual.
+private struct ReaderScrollingVideoPlayer: NSViewRepresentable {
+    let player: AVPlayer
+
+    final class PlayerView: AVPlayerView {
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard let hit = super.hitTest(point) else { return nil }
+            return NSApp.currentEvent?.type == .scrollWheel ? self : hit
+        }
+
+        override func scrollWheel(with event: NSEvent) {
+            nextResponder?.scrollWheel(with: event)
+        }
+    }
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = PlayerView()
+        view.player = player
+        return view
+    }
+
+    func updateNSView(_ view: AVPlayerView, context: Context) {
+        if view.player !== player { view.player = player }
+    }
+}
+#endif
 
 #if os(iOS)
 /// AVKit's player, let go of while the app is in the background: iOS pauses a player whose video is on screen when

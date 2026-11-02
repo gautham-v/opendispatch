@@ -460,7 +460,12 @@ final class ReaderYouTubeCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         config.userContentController.add(ReaderWeakScriptHandler(self), name: ReaderYouTubePage.handlerName)
         config.userContentController.addUserScript(WKUserScript(source: ReaderYouTubePage.frameStyleScript,
                                                                 injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        #if os(macOS)
+        // The player's page doesn't scroll: a scroll with the pointer on the video moves the reader, not nothing.
+        let webView = ReaderFittedWebView(frame: .zero, configuration: config)
+        #else
         let webView = WKWebView(frame: .zero, configuration: config)
+        #endif
         webView.navigationDelegate = self
         webView.uiDelegate = self
         #if os(iOS)

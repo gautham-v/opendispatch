@@ -114,8 +114,8 @@ final class ReaderWeakScriptHandler: NSObject, WKScriptMessageHandler {
 
 #if os(macOS)
 /// A WKWebView that hands vertical scroll-wheel events to the enclosing SwiftUI ScrollView, so a
-/// height-fitted article scrolls with the rest of the reader. Horizontal scrolls (wide code blocks,
-/// tables) stay with the page.
+/// height-fitted article, or the YouTube player, scrolls with the rest of the reader. Horizontal scrolls
+/// (wide code blocks, tables) stay with the page.
 final class ReaderFittedWebView: WKWebView {
     var forwardsVerticalScroll = true
     /// The article's actions, added to WebKit's right-click menu above Inspect Element.
