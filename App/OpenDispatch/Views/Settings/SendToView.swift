@@ -1,6 +1,14 @@
 import OpenDispatchCore
 import SwiftUI
 
+/// A reader bar action shown as an item of the More menu.
+struct ReaderMenuAction: Identifiable {
+    var id: String { title }
+    let title: String
+    var shortcut: ShortcutAction? = nil
+    let perform: () -> Void
+}
+
 /// Reader toolbar action "Send to" (send-to.tsx): sends the item to Readwise Reader or the webhook.
 /// One target configured: sends straight away. Both: a two-item menu. None: opens Settings on the
 /// Integrations pane. While sending the icon pulses; on success it turns into an accent check for
@@ -24,6 +32,8 @@ struct SendToView: View {
     var more = false
     /// The item's link, for the More menu's Open Original, Share… and Copy Link; nil leaves them out.
     var link: URL? = nil
+    /// Reader bar actions moved into the More menu because the bar is narrow; they head the menu.
+    var foldedActions: [ReaderMenuAction] = []
 
     /// MENU_LABEL in send-to.tsx.
     static func menuLabel(_ target: SendTarget) -> String {
@@ -129,6 +139,14 @@ struct SendToView: View {
 
     /// Sections draw their own separators (and headers on macOS), so there are no Dividers here.
     @ViewBuilder private var moreItems: some View {
+        if !foldedActions.isEmpty {
+            Section {
+                ForEach(foldedActions) { action in
+                    Button(action.title, action: action.perform)
+                        .keyboardShortcut(action.shortcut.flatMap(model.keyboardShortcut))
+                }
+            }
+        }
         if let link {
             Section {
                 Button("Open Original") { openURL(link) }

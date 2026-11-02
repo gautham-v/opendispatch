@@ -49,44 +49,48 @@ struct NewTabView: View {
     private var isSearching: Bool { !model.explore.query.isEmpty }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                ExploreSearchField(pane: pane)
-                if isSearching {
-                    ExploreDesktopResults(pane: pane)
-                } else {
-                    ExploreSuggestedSources(horizontalPadding: 8) { seeAll in
-                        HStack {
-                            Text("Sources for you")
-                                .font(OFFont.ui(13))
-                                .foregroundStyle(.ofMuted)
-                            Spacer()
-                            seeAll
-                                .buttonStyle(.plain)
-                                .font(OFFont.ui(13))
-                                .foregroundStyle(.ofAccent)
+        GeometryReader { geo in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    ExploreSearchField(pane: pane)
+                    if isSearching {
+                        ExploreDesktopResults(pane: pane)
+                    } else {
+                        ExploreSuggestedSources(horizontalPadding: 8) { seeAll in
+                            HStack {
+                                Text("Sources for you")
+                                    .font(OFFont.ui(13))
+                                    .foregroundStyle(.ofMuted)
+                                Spacer()
+                                seeAll
+                                    .buttonStyle(.plain)
+                                    .font(OFFont.ui(13))
+                                    .foregroundStyle(.ofAccent)
+                            }
+                            .padding(.horizontal, 8)
                         }
-                        .padding(.horizontal, 8)
+                        ExploreRecentSearches(pane: pane)
+                        recentlyRead
+                        section("Saved", saved)
                     }
-                    ExploreRecentSearches(pane: pane)
-                    recentlyRead
-                    section("Saved", saved)
                 }
+                .frame(maxWidth: isSearching ? 720 : 440)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 56)
+                // Exactly the pane's width: the page's own minimum would otherwise push the pane, and its
+                // bar, past the window.
+                .frame(width: geo.size.width)
             }
-            .frame(maxWidth: isSearching ? 720 : 440)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 56)
-            .frame(maxWidth: .infinity)
-        }
-        .scrollContentBackground(.hidden)
-        .overlayScrollers()
-        .safeAreaInset(edge: .top, spacing: 0) {
-            ReaderBar(pane: pane) {
-                if model.isSplit {
-                    Button { model.closePane(pane) } label: { OFIcon.close.image }
-                        .buttonStyle(ReaderIconButtonStyle(size: Metrics.readerActionButton, glyph: Metrics.readerActionGlyph))
-                        .help("Close this pane")
-                        .accessibilityLabel("Close pane")
+            .scrollContentBackground(.hidden)
+            .overlayScrollers()
+            .safeAreaInset(edge: .top, spacing: 0) {
+                ReaderBar(pane: pane) {
+                    if model.isSplit {
+                        Button { model.closePane(pane) } label: { OFIcon.close.image }
+                            .buttonStyle(ReaderIconButtonStyle(size: Metrics.readerActionButton, glyph: Metrics.readerActionGlyph))
+                            .help("Close this pane")
+                            .accessibilityLabel("Close pane")
+                    }
                 }
             }
         }
@@ -154,7 +158,6 @@ private struct NewTabRow: View {
                 Text(sourceTitle)
                     .foregroundStyle(.ofMuted)
                     .lineLimit(1)
-                    .fixedSize()
             }
             .font(OFFont.ui(13))
             .padding(.horizontal, 8)
@@ -218,21 +221,38 @@ struct ReaderSplitView: View {
 }
 
 /// The reader's top row on macOS / iPad: the pane's tabs, then `actions`. Split view underlines the
-/// focused pane's bar in the accent.
+/// focused pane's bar in the accent. When the bar is narrow, the `foldable` actions move into More
+/// one at a time (`ReaderBarLayout`), and `actions` gets the ones that stay.
 struct ReaderBar<Actions: View>: View {
     let pane: Int
-    @ViewBuilder var actions: Actions
+    let foldable: [ReaderBarAction]
+    let keeping: Set<ReaderBarAction>
+    @ViewBuilder let actions: (Set<ReaderBarAction>) -> Actions
     @Environment(AppModel.self) private var model
     @State private var dropOver = false
+    @State private var width: CGFloat = 0
+
+    init(pane: Int, foldable: [ReaderBarAction], keeping: Set<ReaderBarAction> = [],
+         @ViewBuilder actions: @escaping (Set<ReaderBarAction>) -> Actions) {
+        self.pane = pane
+        self.foldable = foldable
+        self.keeping = keeping
+        self.actions = actions
+    }
+
+    init(pane: Int, @ViewBuilder actions: @escaping () -> Actions) {
+        self.init(pane: pane, foldable: []) { _ in actions() }
+    }
+
+    private static var trailingInset: CGFloat { 16 }
 
     var body: some View {
         HStack(spacing: 6) {
             ReaderTabStrip(pane: pane)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            actions
+            actions(keptActions)
         }
         .padding(.leading, leadingInset)
-        .padding(.trailing, 16)
+        .padding(.trailing, Self.trailingInset)
         #if os(macOS)
         // The top row shared with the list header and traffic lights, hairline under it like Claude's bar.
         .frame(height: Metrics.topBarHeight)
@@ -248,6 +268,18 @@ struct ReaderBar<Actions: View>: View {
         // A tab dragged here from the other pane moves into this one.
         .overlay { if dropOver { Color.ofAccent.opacity(0.12).allowsHitTesting(false) } }
         .onDrop(of: [.plainText], delegate: tabDropDelegate(model: model, dest: pane, over: $dropOver))
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+
+    /// Everything until the bar has been measured.
+    private var keptActions: Set<ReaderBarAction> {
+        guard width > 0 else { return Set(foldable) }
+        return ReaderBarLayout.keptActions(
+            foldable,
+            contentWidth: Double(width - leadingInset - Self.trailingInset),
+            tabCount: model.panes.indices.contains(pane) ? model.panes[pane].tabs.count : 1,
+            keeping: keeping
+        )
     }
 
     /// macOS full-screen reader: the traffic lights sit over the bar's leading edge (the left pane's).
@@ -262,22 +294,46 @@ struct ReaderBar<Actions: View>: View {
 
 /// The reader bar's tabs, shown even when there's only one: pinned tabs first as 32pt source badges,
 /// a hairline, then badge and title, the active tab on the selection grey, × on the active or hovered
-/// tab, then + for a new tab. Unpinned tabs share the width up to 196pt each.
+/// tab, then + for a new tab. Unpinned tabs share the width up to 196pt each. Tabs that don't fit go in
+/// a menu before the +, the active one always staying in the row (`ReaderBarLayout.tabRow`). It draws
+/// inside whatever width the bar leaves it, so it can never push the bar wider.
 struct ReaderTabStrip: View {
     let pane: Int
     @Environment(AppModel.self) private var model
     @State private var hovered: UUID?
+    @State private var width: CGFloat = 0
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         let p = model.panes.indices.contains(pane) ? model.panes[pane] : ReaderPane()
-        HStack(spacing: 2) {
-            ForEach(Array(p.tabs.enumerated()), id: \.element.id) { index, tab in
-                let quiet = { (i: Int) in i != p.active && p.tabs[i].id != hovered }
-                // The hairline after the pins stays put; between tabs it hides beside the active or hovered one.
-                let afterPins = index > 0 && index == p.pinnedCount
-                tabView(tab, index: index, count: p.tabs.count, active: index == p.active,
-                        divider: afterPins || (index > 0 && quiet(index) && quiet(index - 1)))
+        Color.clear
+            .frame(maxWidth: .infinity)
+            .frame(height: 28)
+            .overlay(alignment: .leading) {
+                if width > 0 { row(p) }
+            }
+            .clipped()
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            .padding(.leading, -6)
+    }
+
+    private func row(_ p: ReaderPane) -> some View {
+        let layout = ReaderBarLayout.tabRow(width: Double(width), count: p.tabs.count, pinned: p.pinnedCount, active: p.active)
+        return HStack(spacing: 2) {
+            if let compact = layout.compactWidth {
+                compactTab(p, width: CGFloat(compact), others: layout.hidden)
+            } else {
+                ForEach(Array(layout.visible.enumerated()), id: \.element) { position, index in
+                    let quiet = { (i: Int) in i != p.active && p.tabs[i].id != hovered }
+                    // The hairline after the pins stays put; between tabs it hides beside the active or hovered one.
+                    let afterPins = position > 0 && index >= p.pinnedCount && layout.visible[position - 1] < p.pinnedCount
+                    tabView(p.tabs[index], index: index, count: p.tabs.count, active: index == p.active,
+                            width: layout.widths[index].map { CGFloat($0) },
+                            divider: afterPins || (position > 0 && quiet(index) && quiet(layout.visible[position - 1])))
+                }
+                if !layout.hidden.isEmpty {
+                    overflowMenu(p, tabs: layout.hidden)
+                }
             }
             Button { model.focusPane(pane); model.openNewTab() } label: {
                 OFIcon.plus.image
@@ -289,56 +345,117 @@ struct ReaderTabStrip: View {
             .help(model.shortcutHelp("New tab", .newTab))
             .accessibilityLabel("New tab")
         }
-        .padding(.leading, -6)
     }
 
-    private func tabView(_ tab: ReaderTab, index: Int, count: Int, active: Bool, divider: Bool) -> some View {
+    /// The tabs left out of the row, in tab order.
+    private func overflowMenu(_ p: ReaderPane, tabs: [Int]) -> some View {
+        Menu {
+            ForEach(tabs, id: \.self) { index in
+                Button(title(p.tabs[index])) { model.activateTab(pane: pane, index: index) }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Text("\(tabs.count)")
+                    .font(OFFont.ui(13))
+                    .monospacedDigit()
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+            }
+        }
+        .buttonStyle(TabMenuButtonStyle(width: CGFloat(ReaderBarLayout.overflowWidth)))
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("\(tabs.count) more \(tabs.count == 1 ? "tab" : "tabs")")
+        .accessibilityLabel("\(tabs.count) more \(tabs.count == 1 ? "tab" : "tabs")")
+    }
+
+    /// No room for a title: the active tab's badge, which opens the others when there are any.
+    @ViewBuilder private func compactTab(_ p: ReaderPane, width: CGFloat, others: [Int]) -> some View {
+        let tab = p.tabs[p.active]
+        if others.isEmpty {
+            badge(tab, opening: tab.isNew ? tab.openingURL : nil)
+                .frame(width: width, height: 28)
+                .background(RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous).fill(Color.ofSelection))
+                .help(title(tab))
+                .accessibilityLabel(title(tab))
+        } else {
+            Menu {
+                ForEach(others, id: \.self) { index in
+                    Button(title(p.tabs[index])) { model.activateTab(pane: pane, index: index) }
+                }
+            } label: {
+                badge(tab, opening: tab.isNew ? tab.openingURL : nil)
+            }
+            .buttonStyle(TabMenuButtonStyle(width: width, selected: true))
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help(title(tab))
+            .accessibilityLabel("\(title(tab)), \(others.count) more \(others.count == 1 ? "tab" : "tabs")")
+        }
+    }
+
+    private func title(_ tab: ReaderTab) -> String {
+        if tab.isNew, let opening = tab.openingURL { return URLHost.host(of: opening) }
+        if tab.isNew { return "Explore" }
+        if model.isStartHere(tab) { return "Start here" }
+        return model.item(for: tab)?.item.title ?? "Nothing selected"
+    }
+
+    @ViewBuilder private func badge(_ tab: ReaderTab, opening: String?) -> some View {
+        if opening != nil {
+            ProgressView().controlSize(.mini).frame(width: 14, height: 14)
+        } else if tab.isNew {
+            Image("ph.explore")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 14, height: 14)
+        } else if let item = model.item(for: tab) {
+            SourceBadge(host: item.source.host, title: item.originName, size: 14)
+        }
+    }
+
+    private func tabView(_ tab: ReaderTab, index: Int, count: Int, active: Bool, width: CGFloat?, divider: Bool) -> some View {
         let item = model.item(for: tab)
         let isHovered = hovered == tab.id
         let opening = tab.isNew ? tab.openingURL : nil
         let startHere = model.isStartHere(tab)
-        let title = opening.map(URLHost.host(of:)) ?? (tab.isNew ? "Explore" : startHere ? "Start here" : item?.item.title ?? "Nothing selected")
+        let title = title(tab)
         // The window's only tab, already empty, has nothing to close, and the board stays while the library is empty.
         let closable = (count > 1 || model.isSplit || !tab.isNew) && !(startHere && model.isLibraryEmpty)
+        // An inactive tab gives the ×'s place to its title until it is hovered.
+        let showsClose = active || isHovered
         return Group {
             if tab.isPinned {
-                Group {
-                    if let item { SourceBadge(host: item.source.host, title: item.originName, size: 14) }
-                }
-                .frame(width: 32, height: 28)
+                badge(tab, opening: nil)
+                    .frame(width: CGFloat(ReaderBarLayout.pinnedTabWidth), height: 28)
             } else {
                 HStack(spacing: 7) {
-                    if opening != nil {
-                        ProgressView().controlSize(.mini).frame(width: 14, height: 14)
-                    } else if tab.isNew {
-                        Image("ph.explore")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 14, height: 14)
-                    } else if let item {
-                        SourceBadge(host: item.source.host, title: item.originName, size: 14)
-                    }
+                    badge(tab, opening: opening)
                     Text(title)
                         .font(OFFont.ui(13))
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Button { model.closeTab(pane: pane, index: index) } label: {
-                        OFIcon.close.image
-                            .font(.system(size: 9, weight: .semibold))
-                            .frame(width: 18, height: 18)
-                            .contentShape(Rectangle())
+                    if showsClose {
+                        Button { model.closeTab(pane: pane, index: index) } label: {
+                            OFIcon.close.image
+                                .font(.system(size: 9, weight: .semibold))
+                                .frame(width: 18, height: 18)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(TabCloseButtonStyle())
+                        .opacity(closable ? 1 : 0)
+                        .disabled(!closable)
+                        .help(model.shortcutHelp("Close tab", .closeTab))
+                        .accessibilityLabel("Close tab")
                     }
-                    .buttonStyle(TabCloseButtonStyle())
-                    .opacity(closable && (active || isHovered) ? 1 : 0)
-                    .disabled(!closable)
-                    .help(model.shortcutHelp("Close tab", .closeTab))
-                    .accessibilityLabel("Close tab")
                 }
                 .padding(.leading, 8)
                 .padding(.trailing, 4)
-                .frame(minWidth: 36, maxWidth: 196, minHeight: 28, maxHeight: 28)
+                .frame(width: width, height: 28)
             }
         }
         .foregroundStyle(active ? Color.ofInk : Color.ofMuted)
@@ -544,6 +661,35 @@ private struct NewTabButtonBody: View {
                 RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
                     .fill(configuration.isPressed ? Color.ofSelection : hovering ? Color.ofHover : Color.clear)
             )
+            .onHover { hovering = $0 }
+    }
+}
+
+/// A menu in the strip (the overflow count, a compact tab): looks like a tab, grey on hover like +.
+private struct TabMenuButtonStyle: ButtonStyle {
+    let width: CGFloat
+    var selected = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        TabMenuButtonBody(configuration: configuration, width: width, selected: selected)
+    }
+}
+
+private struct TabMenuButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let width: CGFloat
+    let selected: Bool
+    @State private var hovering = false
+
+    var body: some View {
+        configuration.label
+            .foregroundStyle(hovering || selected ? Color.ofInk : Color.ofMuted)
+            .frame(width: width, height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
+                    .fill(selected || configuration.isPressed ? Color.ofSelection : hovering ? Color.ofHover : Color.clear)
+            )
+            .contentShape(Rectangle())
             .onHover { hovering = $0 }
     }
 }

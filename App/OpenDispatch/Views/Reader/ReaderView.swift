@@ -73,6 +73,8 @@ struct ReaderItemView: View {
     @State private var speechPage = ReaderSpeechPage()
     /// The reader's visible height under the toolbar, which sizes a Short's player (videos only).
     @State private var viewportHeight: CGFloat = 0
+    /// Highlights & Notes opened from More, its button having folded there on a narrow bar.
+    @State private var foldedHighlightsOpen = false
 
     // MARK: Derived (same rules as reader.tsx)
 
@@ -307,25 +309,67 @@ struct ReaderItemView: View {
     /// macOS / iPad toolbar row: the pane's tabs, then the actions (iPhone uses the system bar, see
     /// `phoneToolbar`).
     private var toolbar: some View {
-        ReaderBar(pane: pane) { actions }
+        ReaderBar(pane: pane, foldable: barActions, keeping: speech.owns(speechPage) ? [.listen] : []) { kept in
+            actions(kept)
+        }
     }
 
-    private var actions: some View {
-        HStack(spacing: compact ? 0 : Metrics.readerActionSpacing) {
-            Button {
-                Task { await model.toggleSaved(item) }
-            } label: {
-                if item.isSaved {
-                    OFIcon.bookmarkFilled.image.foregroundStyle(Color.ofAccent)
-                } else {
-                    OFIcon.bookmark.image
-                }
-            }
-            .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
-            .help(item.isSaved ? "Remove from saved" : "Save")
-            .accessibilityLabel(item.isSaved ? "Remove from saved" : "Save")
+    /// The actions this item has, in bar order.
+    private var barActions: [ReaderBarAction] {
+        var list: [ReaderBarAction] = [.save]
+        if canListen { list.append(.listen) }
+        if !isVideo { list.append(.highlights) }
+        list.append(.more)
+        list.append(.split)
+        // One full-screen button per window: the right pane's in split view.
+        if !model.isSplit || pane == model.panes.count - 1 { list.append(.fullScreen) }
+        return list
+    }
 
-            if canListen {
+    /// What a narrow bar moved into More, in bar order.
+    private func foldedActions(_ kept: Set<ReaderBarAction>) -> [ReaderMenuAction] {
+        barActions.filter { !kept.contains($0) }.compactMap { action in
+            switch action {
+            case .save:
+                ReaderMenuAction(title: item.isSaved ? "Remove from Saved" : "Save") {
+                    Task { await model.toggleSaved(item) }
+                }
+            case .listen:
+                ReaderMenuAction(title: listenLabel, shortcut: .listen, perform: listen)
+            case .highlights:
+                ReaderMenuAction(title: "Highlights & Notes") { foldedHighlightsOpen = true }
+            case .split:
+                model.isSplit
+                    ? ReaderMenuAction(title: "Close Pane") { model.closePane(pane) }
+                    : ReaderMenuAction(title: "Split View", shortcut: .split) { model.toggleSplit() }
+            case .fullScreen:
+                ReaderMenuAction(title: model.isFocused ? "Exit Full Screen" : "Full Screen", shortcut: .fullScreen) {
+                    model.toggleFocusMode()
+                }
+            case .more:
+                nil
+            }
+        }
+    }
+
+    private func actions(_ kept: Set<ReaderBarAction>) -> some View {
+        HStack(spacing: Metrics.readerActionSpacing) {
+            if kept.contains(.save) {
+                Button {
+                    Task { await model.toggleSaved(item) }
+                } label: {
+                    if item.isSaved {
+                        OFIcon.bookmarkFilled.image.foregroundStyle(Color.ofAccent)
+                    } else {
+                        OFIcon.bookmark.image
+                    }
+                }
+                .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
+                .help(item.isSaved ? "Remove from saved" : "Save")
+                .accessibilityLabel(item.isSaved ? "Remove from saved" : "Save")
+            }
+
+            if kept.contains(.listen) {
                 Button(action: listen) {
                     OFIcon.headphones.image.foregroundStyle(speech.owns(speechPage) ? Color.ofAccent : Color.ofInk)
                 }
@@ -333,19 +377,26 @@ struct ReaderItemView: View {
                 .help(model.shortcutHelp(speech.owns(speechPage) ? "Pause or resume reading" : "Listen", .listen))
                 .accessibilityLabel(listenLabel)
             }
-            if !isVideo {
+            if kept.contains(.highlights) {
                 HighlightsToolbarButton(item: item, pane: pane, compact: compact, size: buttonSize, glyph: glyphSize)
             }
 
-            // Open Original, Share…, Copy, Send to and Reload Article in one menu.
-            SendToView(item: item, size: buttonSize, iconSize: glyphSize, more: true, link: itemURL)
+            // Open Original, Share…, Copy, Send to and Reload Article in one menu, after whatever a narrow bar folded.
+            SendToView(item: item, size: buttonSize, iconSize: glyphSize, more: true, link: itemURL, foldedActions: foldedActions(kept))
+                .popover(isPresented: $foldedHighlightsOpen, arrowEdge: .bottom) {
+                    HighlightsList(item: item, pane: pane, showsHeader: true)
+                        .frame(width: 340)
+                        .presentationCompactAdaptation(.popover)
+                }
 
-            if !compact {
+            if kept.contains(.split) || kept.contains(.fullScreen) {
                 // Article actions on the left, window controls on the right.
                 Rectangle().fill(Color.ofHairline)
                     .frame(width: 1, height: 16)
                     .padding(.horizontal, 6)
+            }
 
+            if kept.contains(.split) {
                 if model.isSplit {
                     Button { model.closePane(pane) } label: { OFIcon.close.image }
                         .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
@@ -357,16 +408,15 @@ struct ReaderItemView: View {
                         .help(model.shortcutHelp("Split view", .split))
                         .accessibilityLabel("Split view")
                 }
+            }
 
-                // One full-screen button per window: the right pane's in split view.
-                if !model.isSplit || pane == model.panes.count - 1 {
-                    Button { model.toggleFocusMode() } label: {
-                        (model.isFocused ? OFIcon.collapse : OFIcon.expand).image
-                    }
-                    .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
-                    .help(model.isFocused ? "Exit full screen (esc)" : model.shortcutHelp("Full screen", .fullScreen))
-                    .accessibilityLabel(model.isFocused ? "Exit full screen" : "Full screen")
+            if kept.contains(.fullScreen) {
+                Button { model.toggleFocusMode() } label: {
+                    (model.isFocused ? OFIcon.collapse : OFIcon.expand).image
                 }
+                .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
+                .help(model.isFocused ? "Exit full screen (esc)" : model.shortcutHelp("Full screen", .fullScreen))
+                .accessibilityLabel(model.isFocused ? "Exit full screen" : "Full screen")
             }
         }
     }
