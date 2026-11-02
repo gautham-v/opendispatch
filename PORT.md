@@ -1225,6 +1225,21 @@ Matching got stricter and news coverage groups into stories. Migration `v9-topic
 - Explore (`ExplorePhoneView`): a row at the top of the results, "Add as a topic" with `ExploreTopicButton` (Added opens the topic).
 - Not run on the simulator beyond launch (no way to tap from the command line here); build-checked for iOS and macOS.
 
+### Bring who you follow (Core + App) — 2026-11-02
+```swift
+public enum FollowApp: String, CaseIterable, Identifiable, Sendable   // youtube, instagram, x, reddit, substack, bluesky
+    var name, host, account: WebAccount?, shortlistSize, handlePlaceholder, handleHint, listTitle
+public struct FollowedAccount   // result: SourceSearchResult, followers: Int?, isPrivate, isVerified
+public struct FollowRead        // accounts (the app's order), followedTotal: Int?
+public struct FollowList        // app, ranked, shortlistCount, total, totalIsKnown, leftOut, alsoOn; shortlist, rest
+public enum FollowRanking       // list(_:read:elsewhere:), normalized(_:), summary(_:)
+public enum FollowHandle        // cleaned(_:for:)
+public protocol FollowReading: Sendable { func read(_ app: FollowApp, handle: String?, progress: @escaping @Sendable (Int) -> Void) async throws -> FollowRead }
+public struct DefaultFollowReader: FollowReading
+```
+- `DiscussionWeb`: `xFollowing(maxAccounts:progress:)`, `instagramFollowing(maxAccounts:progress:)`, `youtubeSubscriptions(progress:)`. `WebAccount` gains `youtube` and `signOutDomains`. `XPages.following(inTimeline:)` is what `accounts(inTimeline:)` now reads through.
+- App: `FollowImportStore` (`model.followImport`: `phase(_:)`, `select(_:)`, `goAhead(_:)`, `signInClosed(_:)`, `submit(handle:for:)`, `toggle`, `expand`, `add(_:into:)`), `FollowImportView`, `FollowAppTiles` on `StartHereView`; `AppModel.beginFollowImport(_:)`, `isFollowImportPresented`.
+
 ### Discussions (Core + App) — 2026-10-29
 Explore searches posts, and the reader shows comments under a thread and under every YouTube video.
 - Model (`Discussions/Discussion.swift`): `DiscussionPlace` (reddit, x, bluesky, hackerNews, youtube; `searched` is Explore's order;

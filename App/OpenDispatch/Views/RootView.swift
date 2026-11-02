@@ -59,6 +59,9 @@ struct RootView: View {
             .sheet(isPresented: $model.isAddSourcePresented) {
                 AddSourceView().environment(model)
             }
+            .sheet(isPresented: $model.isFollowImportPresented) {
+                FollowImportView().environment(model)
+            }
             .sheet(item: $model.topicEditor) { request in
                 TopicEditorView(request: request).environment(model)
             }

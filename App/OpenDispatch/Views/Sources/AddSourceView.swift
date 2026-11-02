@@ -50,6 +50,8 @@ struct AddSourceView: View {
     @State private var filter = SourceFilter.all
     /// The sign-in sheet, from here because the app's own can't open over this one.
     @State private var signingIn: SignInTarget?
+    /// The sheet for bringing who you follow in from another app.
+    @State private var importingFollows = false
     @State private var searching = false
     @State private var searchError = false
     @State private var importing = false
@@ -102,6 +104,9 @@ struct AddSourceView: View {
         .onChange(of: filter) { showsAll = false }
         .task(id: "\(trimmed)|\(signedInToX)") { await search() }
         .task { await model.loadSourceSuggestions() }
+        .sheet(isPresented: $importingFollows) {
+            FollowImportView().environment(model)
+        }
         .sheet(item: $signingIn, onDismiss: { Task { await model.didCloseSignIn() } }) { target in
             WebSignInView(target: target, onDone: {})
         }
@@ -175,6 +180,7 @@ struct AddSourceView: View {
             .scrollIndicators(.automatic)
             .mask(fadingOut)
             VStack(alignment: .leading, spacing: 6) {
+                followImportButton
                 importButton("Import OPML\u{2026}")
                 importStatusText
             }
@@ -323,6 +329,16 @@ struct AddSourceView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.bottom, 8)
         }
+    }
+
+    private var followImportButton: some View {
+        Button("Bring who you follow\u{2026}") {
+            model.followImport.app = nil
+            importingFollows = true
+        }
+        .buttonStyle(.plain)
+        .font(SheetFont.meta)
+        .foregroundStyle(.ofMuted)
     }
 
     private func importButton(_ title: String) -> some View {
@@ -584,6 +600,7 @@ struct AddSourceView: View {
                 suggestionRows(shown)
                     .padding(.horizontal, -4)
             }
+            followImportButton
             importButton("Import from another reader (OPML)\u{2026}")
                 .padding(.top, 2)
             importStatusText

@@ -154,6 +154,8 @@ final class AppModel {
     let topicStore: TopicStore
     /// The sites signed in to in the app (X, Reddit), for Explore's posts and the reader's replies.
     let accounts: WebAccountStore
+    /// Bringing who you follow in from another app.
+    let followImport = FollowImportStore()
     /// The app icon chosen in Settings → Appearance.
     let appIcon = AppIconStore()
     @ObservationIgnored private var transcripts: [Int64: Transcript] = [:]
@@ -249,6 +251,8 @@ final class AppModel {
     // MARK: Presentation flags (sheets / dialogs)
 
     var isAddSourcePresented = false
+    /// The board's sheet for bringing who you follow (`FollowImportView`).
+    var isFollowImportPresented = false
     /// What History says might be worth following (`loadSourceSuggestions`).
     private(set) var sourceSuggestions: [SourceSuggestion] = []
     /// For the row menu's Why Here, kept current by `loadItems` while the order is Personalized. Not observed: the menu reads it as it opens.
@@ -1863,6 +1867,12 @@ final class AppModel {
 
     func dismissStartHere() {
         updateStartHere { $0.dismiss() }
+    }
+
+    /// The board's tile for an app: its list, in the sheet.
+    func beginFollowImport(_ app: FollowApp) {
+        isFollowImportPresented = true
+        Task { await followImport.select(app) }
     }
 
     /// Where a pack's source stands. An add that finished only counts while its source is still in the library.

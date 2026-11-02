@@ -50,7 +50,7 @@ public struct DefaultSocialAccounts: SocialAccountSearching {
         return data
     }
 
-    private static func encoded(_ q: String) -> String {
+    static func encoded(_ q: String) -> String {
         var allowed = CharacterSet.urlQueryAllowed
         allowed.remove(charactersIn: "&+=#;@")
         return q.addingPercentEncoding(withAllowedCharacters: allowed) ?? q
@@ -58,7 +58,7 @@ public struct DefaultSocialAccounts: SocialAccountSearching {
 
     // MARK: Bluesky
 
-    private struct BlueskyActors: Decodable {
+    struct BlueskyActors: Decodable {
         struct Actor: Decodable {
             let did: String
             let handle: String
@@ -87,7 +87,7 @@ public struct DefaultSocialAccounts: SocialAccountSearching {
         return profiles.profiles?.first.map(Self.blueskyResult)
     }
 
-    private static func blueskyResult(_ a: BlueskyActors.Actor) -> SourceSearchResult {
+    static func blueskyResult(_ a: BlueskyActors.Actor) -> SourceSearchResult {
         let name = a.displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return SourceSearchResult(title: name.isEmpty ? a.handle : name, subtitle: "Bluesky", feedUrl: "https://bsky.app/profile/\(a.did)/rss",
                                   siteUrl: "https://bsky.app/profile/\(a.handle)", kind: .rss, imageUrl: a.avatar, handle: a.handle,

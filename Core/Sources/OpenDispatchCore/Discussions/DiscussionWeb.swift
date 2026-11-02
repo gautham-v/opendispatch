@@ -10,7 +10,7 @@ import os
 /// The sites a signed-in session counts for. The app's web views share one persistent data store
 /// (`WKWebsiteDataStore.default()`), so signing in on the sign-in sheet signs the hidden views in too.
 public enum WebAccount: String, Sendable, CaseIterable, Identifiable {
-    case x, reddit, instagram
+    case x, reddit, instagram, youtube
 
     public var id: String { rawValue }
 
@@ -19,6 +19,7 @@ public enum WebAccount: String, Sendable, CaseIterable, Identifiable {
         case .x: "X"
         case .reddit: "Reddit"
         case .instagram: "Instagram"
+        case .youtube: "YouTube"
         }
     }
 
@@ -28,6 +29,8 @@ public enum WebAccount: String, Sendable, CaseIterable, Identifiable {
         case .x: URL(string: "https://x.com/i/flow/login")!
         case .reddit: URL(string: "https://www.reddit.com/login/")!
         case .instagram: URL(string: "https://www.instagram.com/accounts/login/")!
+        // The page needs a sign-in, so it goes to Google's and comes back with YouTube's session.
+        case .youtube: URL(string: "https://www.youtube.com/feed/channels")!
         }
     }
 
@@ -37,6 +40,7 @@ public enum WebAccount: String, Sendable, CaseIterable, Identifiable {
         case .x: "auth_token"
         case .reddit: "reddit_session"
         case .instagram: "sessionid"
+        case .youtube: "LOGIN_INFO"
         }
     }
 
@@ -45,18 +49,29 @@ public enum WebAccount: String, Sendable, CaseIterable, Identifiable {
         case .x: ["x.com", "twitter.com"]
         case .reddit: ["reddit.com"]
         case .instagram: ["instagram.com"]
+        case .youtube: ["youtube.com"]
         }
+    }
+
+    /// What signing out clears beyond `domains`: a YouTube session comes from a Google one, which would sign it straight back in.
+    var signOutDomains: [String] {
+        self == .youtube ? domains + ["google.com"] : domains
     }
 
     /// The user agent the sign-in sheet and the hidden view present: Safari's, which X expects of a browser it lets sign in.
     public static var browserUserAgent: String {
         #if os(iOS)
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1"
+        mobileUserAgent
         #else
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+        desktopUserAgent
         #endif
     }
+
+    private static let mobileUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1"
+    /// YouTube's desktop site, which lists subscriptions the same on every device.
+    static let desktopUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
 }
+
 
 #if canImport(WebKit)
 extension WebAccount {
@@ -89,7 +104,7 @@ extension WebAccount {
         let store = Self.dataStore
         let types = WKWebsiteDataStore.allWebsiteDataTypes()
         let records = await store.dataRecords(ofTypes: types)
-        let mine = records.filter { r in domains.contains { r.displayName.hasSuffix($0) } }
+        let mine = records.filter { r in signOutDomains.contains { r.displayName.hasSuffix($0) } }
         await store.removeData(ofTypes: types, for: mine)
         DiscussionWeb.shared.forget(self)
     }
@@ -113,6 +128,9 @@ extension WebAccount {
 /// Instagram: one view opens an account's profile, one at a time, and hands back the links to the posts it drew (`InstagramFeed`).
 /// It reads no more than a visitor sees and needs no sign-in unless Instagram asks a visitor for one.
 ///
+/// Who you follow (`DefaultFollowReader`): X's Following page, Instagram's following list and YouTube's channel list, read once when
+/// asked, through the sign-in. These need a session and read more than anything else here, so they go slowly and stop at a refusal.
+///
 /// Images, media and fonts are never loaded. Everything here runs on the main actor; the views are made on first use.
 @MainActor
 public final class DiscussionWeb: NSObject {
@@ -135,6 +153,7 @@ public final class DiscussionWeb: NSObject {
     private var instagram: SiteView?
     /// The profiles waiting for Instagram's view.
     private var instagramQueue: Task<Void, Never>?
+    private var youtube: SiteView?
     private var rules: WKContentRuleList?
     private var rulesLoaded = false
 
@@ -152,6 +171,8 @@ public final class DiscussionWeb: NSObject {
             xPages = [:]
         case .instagram:
             instagram = nil
+        case .youtube:
+            youtube = nil
         }
     }
 
@@ -182,7 +203,7 @@ public final class DiscussionWeb: NSObject {
         if let redditWarming { return try await redditWarming.value }
         if let view = reddit, !view.terminated, redditReady, !force { return view }
         // A page load passes the challenge; the page asked for is as good as any, unless it isn't a page.
-        let page = path.hasPrefix("/svc/") || path.contains("/.rss") ? "/" : path
+        let page = path.hasPrefix("/svc/") || path.contains("/.rss") || path.contains(".json") ? "/" : path
         let warming = Task { @MainActor in
             defer { redditWarming = nil }
             let view: SiteView
@@ -271,11 +292,11 @@ public final class DiscussionWeb: NSObject {
         return try await task.value
     }
 
-    /// Keeps the answers of X's `TweetDetail` and `SearchTimeline` requests in `window.__odx` as the page makes them (the page's
+    /// Keeps the answers of X's `TweetDetail`, `SearchTimeline`, `Following` and `UserByScreenName` requests in `window.__odx` as the page makes them (the page's
     /// own world: its requests go through the page's XMLHttpRequest and fetch).
     private static let xCapture = """
         (() => {
-          const ops = /\\/(TweetDetail|SearchTimeline)\\b/;
+          const ops = /\\/(TweetDetail|SearchTimeline|Following|UserByScreenName)\\b/;
           const keep = (u, body) => { const m = ops.exec(u); if (m) (window.__odx = window.__odx || []).push({ op: m[1], u, body }); };
           const open = XMLHttpRequest.prototype.open;
           XMLHttpRequest.prototype.open = function (method, u) {
@@ -438,6 +459,187 @@ public final class DiscussionWeb: NSObject {
         throw FeedDetectionError("Instagram didn\u{2019}t show this account\u{2019}s posts. Trying again at the next refresh.")
     }
 
+    // MARK: Who you follow
+
+    /// What X's Following page gave: its answers, and the account's own profile answer, which says how many it follows.
+    struct XFollowingPages: Sendable {
+        var answers: [Data]
+        var profile: Data?
+    }
+
+    /// Everyone the signed-in account follows on X, up to about `maxAccounts`, the latest follows first: opens the account's own Following
+    /// page in Topics' view and scrolls it at a reading pace, keeping X's answers.
+    func xFollowing(maxAccounts: Int, progress: @escaping @Sendable (Int) -> Void) async throws -> XFollowingPages {
+        try Self.requireForeground()
+        guard await WebAccount.x.isSignedIn() else { throw DiscussionError.signInRequired(.x) }
+        let lane = xBack
+        let previous = lane.queue
+        let task = Task { @MainActor () throws -> XFollowingPages in
+            _ = await previous?.value
+            return try await self.readXFollowing(maxAccounts: maxAccounts, in: lane, progress: progress)
+        }
+        lane.queue = Task { _ = try? await task.value }
+        return try await task.value
+    }
+
+    private func readXFollowing(maxAccounts: Int, in lane: XLane, progress: @Sendable (Int) -> Void) async throws -> XFollowingPages {
+        let view = await xView(lane)
+        lane.shown = []
+        try await view.load(URL(string: XPages.origin + "/home")!)
+        var handle: String?
+        var wall = false
+        try? await view.waitUntil(timeout: 15) { view in
+            let r = try await view.call("""
+                const a = document.querySelector("a[data-testid=AppTabBar_Profile_Link], a[data-testid=DashButton_ProfileIcon_Link]");
+                return { handle: a ? a.getAttribute("href") : "", wall: location.pathname.startsWith("/i/flow/login") || !!document.querySelector("[data-testid=loginButton]") };
+                """, in: Self.world) as? [String: Any]
+            wall = r?["wall"] as? Bool == true
+            let href = r?["handle"] as? String ?? ""
+            handle = href.isEmpty ? nil : String(href.drop { $0 == "/" })
+            return wall || handle != nil
+        }
+        if wall { throw DiscussionError.signInRequired(.x) }
+        guard let handle else { throw FeedDetectionError("X didn\u{2019}t say which account is signed in. Try again in a minute.") }
+
+        try await view.load(URL(string: "\(XPages.origin)/\(handle)/following")!)
+        var answers: [Data] = []
+        var profile: Data?
+        var read = 0
+        /// Takes the answers X has made since the last look.
+        func collect() async throws -> Int {
+            let r = try await view.call("""
+                const all = window.__odx || [];
+                return all.slice(from).filter((a) => a.op === "Following" || a.op === "UserByScreenName").map((a) => [a.op, a.body]).concat([["count", String(all.length)]]);
+                """, arguments: ["from": read], in: .page) as? [[String]] ?? []
+            for pair in r where pair.count == 2 {
+                switch pair[0] {
+                case "Following": answers.append(Data(pair[1].utf8))
+                case "UserByScreenName": profile = Data(pair[1].utf8)
+                default: read = Int(pair[1]) ?? read
+                }
+            }
+            return XPages.following(inAnswers: answers).count
+        }
+        try await view.waitUntil(timeout: 15, every: 0.3) { _ in try await collect() > 0 }
+        var found = try await collect()
+        progress(found)
+        var stalled = 0
+        while found < maxAccounts, stalled < 3 {
+            _ = try? await view.call("window.scrollBy(0, window.innerHeight * 2); return true;", in: Self.world)
+            try await Task.sleep(nanoseconds: 1_500_000_000)
+            let now = try await collect()
+            stalled = now == found ? stalled + 1 : 0
+            found = now
+            progress(found)
+        }
+        log.info("x following: \(found) accounts from \(answers.count) answers")
+        return XFollowingPages(answers: answers, profile: profile)
+    }
+
+    /// Pages of who the signed-in account follows on Instagram, up to about `maxAccounts`, read slowly: this is the app's biggest
+    /// request of Instagram, made once and only when asked, and it stops at the first refusal.
+    func instagramFollowing(maxAccounts: Int, progress: @escaping @Sendable (Int) -> Void) async throws -> [Data] {
+        try Self.requireForeground()
+        let previous = instagramQueue
+        let task = Task { @MainActor () throws -> [Data] in
+            _ = await previous?.value
+            return try await self.readInstagramFollowing(maxAccounts: maxAccounts, progress: progress)
+        }
+        instagramQueue = Task { _ = try? await task.value }
+        return try await task.value
+    }
+
+    private func readInstagramFollowing(maxAccounts: Int, progress: @Sendable (Int) -> Void) async throws -> [Data] {
+        let cookies = await WebAccount.cookies()
+        guard await WebAccount.instagram.isSignedIn(),
+              let user = cookies.first(where: { $0.name == "ds_user_id" && $0.domain.hasSuffix("instagram.com") })?.value else {
+            throw DiscussionError.signInRequired(.instagram)
+        }
+        let view: SiteView
+        if let existing = instagram, !existing.terminated {
+            view = existing
+        } else {
+            view = await newView(.instagram)
+            instagram = view
+        }
+        try await view.load(URL(string: "https://www.instagram.com/")!)
+        let script = """
+            const r = await fetch(path, { credentials: "include", headers: { "X-IG-App-ID": "936619743392459", "X-Requested-With": "XMLHttpRequest" } });
+            return { status: r.status, text: await r.text() };
+            """
+        var pages: [Data] = []
+        var found = 0
+        var next: String?
+        repeat {
+            let after = next.map { "&max_id=\($0)" } ?? ""
+            let answer = try await view.call(script, arguments: ["path": "/api/v1/friendships/\(user)/following/?count=50\(after)"], in: Self.world, timeout: 20) as? [String: Any]
+            let data = Data((answer?["text"] as? String ?? "").utf8)
+            guard (answer?["status"] as? NSNumber)?.intValue == 200, let page = FollowPages.instagram(data) else {
+                log.info("instagram following stopped: status \((answer?["status"] as? NSNumber)?.intValue ?? 0)")
+                if pages.isEmpty {
+                    throw FeedDetectionError("Instagram didn\u{2019}t share your list. It may want you to confirm it\u{2019}s you in its app. Try again later.")
+                }
+                break
+            }
+            pages.append(data)
+            found += page.accounts.count
+            progress(found)
+            next = page.next
+            if next != nil, found < maxAccounts { try await Task.sleep(nanoseconds: 2_500_000_000) }
+        } while next != nil && found < maxAccounts
+        return pages
+    }
+
+    /// Keeps the answers of YouTube's `browse` requests, which bring more of a list as it scrolls, in `window.__odyt`.
+    private static let youtubeCapture = """
+        (() => {
+          const f = window.fetch;
+          window.fetch = function (input) {
+            const u = (input && input.url) || String(input);
+            const p = f.apply(this, arguments);
+            if (u.includes("/youtubei/v1/browse")) p.then((r) => r.clone().text()).then((t) => (window.__odyt = window.__odyt || []).push(t)).catch(() => {});
+            return p;
+          };
+        })();
+        """
+
+    /// The signed-in account's channel list (`/feed/channels`, most relevant first) as the page's own data and the answers that
+    /// brought more of it as it scrolled. The first page is the part that matters, so a list that won't scroll is still useful.
+    func youtubeSubscriptions(progress: @escaping @Sendable (Int) -> Void) async throws -> [Data] {
+        try Self.requireForeground()
+        let view: SiteView
+        if let existing = youtube, !existing.terminated {
+            view = existing
+        } else {
+            view = await newView(.youtube)
+            youtube = view
+        }
+        try await view.load(URL(string: "https://www.youtube.com/feed/channels")!)
+        var first: String?
+        try? await view.waitUntil(timeout: 15) { view in
+            if view.webView.url?.host?.hasSuffix("accounts.google.com") == true { return true }
+            first = try await view.call("return window.ytInitialData ? JSON.stringify(window.ytInitialData) : null;", in: .page) as? String
+            return first != nil
+        }
+        if view.webView.url?.host?.hasSuffix("accounts.google.com") == true { throw DiscussionError.signInRequired(.youtube) }
+        guard let first else { throw FeedDetectionError("YouTube didn\u{2019}t show your subscriptions. Try again in a minute.") }
+        var bodies = [Data(first.utf8)]
+        var found = FollowPages.youtube(bodies).count
+        progress(found)
+        var stalled = 0
+        while stalled < 2 {
+            _ = try? await view.call("window.scrollTo(0, document.documentElement.scrollHeight); return true;", in: .page)
+            try await Task.sleep(nanoseconds: 1_200_000_000)
+            let more = try? await view.call("const a = window.__odyt || []; window.__odyt = []; return a;", in: .page) as? [String]
+            bodies += (more ?? []).map { Data($0.utf8) }
+            let now = FollowPages.youtube(bodies).count
+            stalled = now == found ? stalled + 1 : 0
+            found = now
+            progress(found)
+        }
+        return bodies
+    }
+
     /// A web view's pages don't run while an iPhone app is in the background (a background refresh), so don't start one.
     private static func requireForeground() throws {
         #if os(iOS)
@@ -483,7 +685,15 @@ public final class DiscussionWeb: NSObject {
         if account == .x {
             config.userContentController.addUserScript(WKUserScript(source: Self.xCapture, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
-        return SiteView(configuration: config, userAgent: account == .reddit ? nil : WebAccount.browserUserAgent)
+        if account == .youtube {
+            config.userContentController.addUserScript(WKUserScript(source: Self.youtubeCapture, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
+        let agent = switch account {
+        case .reddit: String?.none
+        case .youtube: WebAccount.desktopUserAgent
+        case .x, .instagram: WebAccount.browserUserAgent
+        }
+        return SiteView(configuration: config, userAgent: agent)
     }
 
     /// Blocks images, media and fonts in the hidden views; nil if WebKit won't compile the rules.

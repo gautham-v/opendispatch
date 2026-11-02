@@ -14,15 +14,37 @@ struct StartHereView: View {
             header
             searchField
                 .padding(.top, 10)
-                .padding(.bottom, 18)
-            ForEach(StarterSources.boardPacks) { pack in
+                .padding(.bottom, 16)
+            label("Bring who you follow")
+            FollowAppTiles()
+                .padding(.bottom, showsPacks ? 16 : 0)
+            if showsPacks {
+                label("Or start with a pack")
+                ForEach(StarterSources.boardPacks) { pack in
+                    Rectangle().fill(Color.ofHairline).frame(height: 1)
+                    StarterPackRow(pack: pack)
+                }
                 Rectangle().fill(Color.ofHairline).frame(height: 1)
-                StarterPackRow(pack: pack)
+                links
+                    .padding(.top, 12)
             }
-            Rectangle().fill(Color.ofHairline).frame(height: 1)
-            links
-                .padding(.top, 12)
         }
+    }
+
+    /// On iPhone the stories come in under the board, so once an app has brought some in the packs fold away for them.
+    private var showsPacks: Bool {
+        #if os(iOS)
+        !model.followImport.hasAdded
+        #else
+        true
+        #endif
+    }
+
+    private func label(_ title: String) -> some View {
+        Text(title)
+            .font(OFFont.ui(13, .medium))
+            .foregroundStyle(.ofMuted)
+            .padding(.bottom, 8)
     }
 
     private var header: some View {

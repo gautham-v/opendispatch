@@ -254,8 +254,13 @@ enum XPages {
 
     /// The accounts in a People `SearchTimeline` answer, in its order. The fields live in `core`, `avatar` and `relationship_counts`, or in `legacy` in older answers.
     static func accounts(inTimeline data: Data) -> [SourceSearchResult] {
+        following(inTimeline: data).map(\.result)
+    }
+
+    /// The accounts in an answer of user entries (`SearchTimeline`'s People, `Following`), in its order.
+    static func following(inTimeline data: Data) -> [FollowedAccount] {
         var seen = Set<String>()
-        return entries(data).compactMap { entry -> SourceSearchResult? in
+        return entries(data).compactMap { entry -> FollowedAccount? in
             guard (entry["entryId"] as? String)?.hasPrefix("user-") == true,
                   let item = (entry["content"] as? [String: Any])?["itemContent"] as? [String: Any],
                   let user = (item["user_results"] as? [String: Any])?["result"] as? [String: Any] else { return nil }
@@ -264,10 +269,26 @@ enum XPages {
             guard let handle = (core?["screen_name"] as? String) ?? (legacy?["screen_name"] as? String),
                   seen.insert(handle.lowercased()).inserted else { return nil }
             let avatar = ((user["avatar"] as? [String: Any])?["image_url"] as? String) ?? (legacy?["profile_image_url_https"] as? String)
-            return XAccounts.result(name: (core?["name"] as? String) ?? (legacy?["name"] as? String) ?? handle, handle: handle,
-                                    followers: ((user["relationship_counts"] as? [String: Any])?["followers"] as? Int) ?? (legacy?["followers_count"] as? Int),
-                                    avatar: avatar?.replacingOccurrences(of: "_normal.", with: "_bigger."))
+            let followers = ((user["relationship_counts"] as? [String: Any])?["followers"] as? Int) ?? (legacy?["followers_count"] as? Int)
+            let result = XAccounts.result(name: (core?["name"] as? String) ?? (legacy?["name"] as? String) ?? handle, handle: handle, followers: followers,
+                                          avatar: avatar?.replacingOccurrences(of: "_normal.", with: "_bigger."))
+            let isPrivate = ((user["privacy"] as? [String: Any])?["protected"] as? Bool) ?? (legacy?["protected"] as? Bool) ?? false
+            let verified = ((user["verification"] as? [String: Any])?["verified"] as? Bool) ?? (legacy?["verified"] as? Bool) ?? false
+            return FollowedAccount(result: result, followers: followers, isPrivate: isPrivate, isVerified: verified)
         }
+    }
+
+    /// Every account in a run of `Following` answers, each once, in order.
+    static func following(inAnswers answers: [Data]) -> [FollowedAccount] {
+        var seen = Set<String>()
+        return answers.flatMap(following(inTimeline:)).filter { seen.insert($0.result.feedUrl.lowercased()).inserted }
+    }
+
+    /// How many an account follows, from X's `UserByScreenName` answer.
+    static func followingCount(inProfile data: Data) -> Int? {
+        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let user = ((json["data"] as? [String: Any])?["user"] as? [String: Any])?["result"] as? [String: Any] else { return nil }
+        return ((user["relationship_counts"] as? [String: Any])?["following"] as? Int) ?? ((user["legacy"] as? [String: Any])?["friends_count"] as? Int)
     }
 
     /// The posts in a `SearchTimeline` answer, in its order.

@@ -31,6 +31,8 @@ struct SettingsIntegrationsPane: View {
     @State private var savedFlash: Task<Void, Never>?
     /// The sign-in sheet opened from here (Settings is itself a sheet on iOS, so RootView's can't show over it).
     @State private var signingIn: SignInTarget?
+    /// The sheet for bringing who you follow in from another app.
+    @State private var importingFollows = false
     /// The domain typed to add a site.
     @State private var newSite = ""
     @FocusState private var focus: Field?
@@ -208,6 +210,16 @@ struct SettingsIntegrationsPane: View {
                     .buttonStyle(SettingsSmallButtonStyle(quiet: on))
                 }
             }
+            SettingsRow(label: "Bring who you follow", hint: "Add accounts you follow on YouTube, Instagram, X, Reddit, Substack or Bluesky.") {
+                Button("Choose\u{2026}") {
+                    model.followImport.app = nil
+                    importingFollows = true
+                }
+                .buttonStyle(SettingsSmallButtonStyle(quiet: false))
+            }
+        }
+        .sheet(isPresented: $importingFollows) {
+            FollowImportView().environment(model)
         }
     }
 
@@ -307,6 +319,8 @@ struct SettingsIntegrationsPane: View {
         case (.reddit, false): "Optional: Reddit posts and comments are read without an account."
         case (.instagram, true): "Signed in. Accounts you add here are read as you at each refresh."
         case (.instagram, false): "Optional: accounts you add here are read without an account. Sign in only if Instagram asks."
+        case (.youtube, true): "Signed in. Only used to list your subscriptions when you bring them in."
+        case (.youtube, false): "Optional: only used to list your subscriptions when you bring them in."
         }
     }
 
