@@ -61,6 +61,12 @@ public struct DefaultFeedParser: FeedParser {
         return try FeedParsingSupport.rawFeed(root)
     }
 
+    /// The whole text of a feed entry that is a post: a Reddit thread's `.md` part, or a Bluesky or Mastodon post. Nil for anything else.
+    private static func postPreview(html: String?, url: String) -> PostPreview? {
+        if DiscussionPlace.thread(of: url) == .reddit { return PostPreview.fromFeedHTML(html, root: ".md") }
+        return SocialPosts.network(of: url) == nil ? nil : PostPreview.fromFeedHTML(html)
+    }
+
     /// normalizeItem in parse.ts. nil when the entry has no usable URL.
     static func normalizeItem(_ raw: FeedParsingSupport.RawItem, kind: SourceKind, feedURL: String, feedLink: String?,
                               showArt: String?, now: Date) -> ParsedItem? {
@@ -126,7 +132,8 @@ public struct DefaultFeedParser: FeedParser {
             author: author, publishedAt: publishedAt,
             thumbnailUrl: S.absolutize(thumb, base: url).flatMap { LeadImage.isAccountPicture($0) ? nil : $0 },
             durationSec: audio != nil ? S.parseDuration(raw.itunesDuration) : nil,
-            audioUrl: audio
+            audioUrl: audio,
+            postPreview: postPreview(html: html, url: url)
         )
     }
 }

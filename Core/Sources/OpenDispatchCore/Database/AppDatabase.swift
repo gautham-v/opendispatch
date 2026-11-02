@@ -419,6 +419,15 @@ public final class AppDatabase: Sendable {
                 WHERE url LIKE '%instagram.com/%' AND url NOT LIKE '%/p/%' AND url NOT LIKE '%/reel/%' AND url NOT LIKE '%/tv/%'
                 """)
         }
+        // A post's whole text, media, quoted post and link card for list rows, starting with the posts already read.
+        m.registerMigration("v22-post-preview") { db in
+            try db.execute(sql: "ALTER TABLE items ADD COLUMN post_preview TEXT")
+            let rows = try Row.fetchAll(db, sql: "SELECT id, content_html FROM items WHERE content_html LIKE '%class=\"x-post\"%'")
+            for row in rows {
+                guard let json = PostPreview.fromMarkup(row["content_html"])?.json else { continue }
+                try db.execute(sql: "UPDATE items SET post_preview = ? WHERE id = ?", arguments: [json, row["id"] as Int64])
+            }
+        }
         return m
     }
 }

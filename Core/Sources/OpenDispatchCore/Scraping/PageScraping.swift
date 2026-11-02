@@ -12,9 +12,12 @@ public struct ArticleMeta: Sendable, Hashable {
     public var ogType: String?
     /// A post on X that quotes another: the quoted account's avatar (pbs.twimg.com).
     public var quoteAvatarUrl: String?
+    /// A post on X: all of it, for a list row that shows it at length.
+    public var postPreview: PostPreview?
 
     public init(title: String? = nil, summary: String? = nil, author: String? = nil, publishedAt: Date? = nil,
-                thumbnailUrl: String? = nil, ogType: String? = nil, quoteAvatarUrl: String? = nil) {
+                thumbnailUrl: String? = nil, ogType: String? = nil, quoteAvatarUrl: String? = nil, postPreview: PostPreview? = nil) {
+        self.postPreview = postPreview
         self.title = title
         self.summary = summary
         self.author = author
@@ -284,7 +287,11 @@ public enum PageScraping {
         guard let doc = try? SwiftSoup.parse(html, pageURL) else { return ArticleMeta() }
         let meta = PageMeta.meta(in: doc)
         if let page = URL(string: pageURL), isXHost(page.host() ?? ""), isTweetPath(page.path(percentEncoded: true)) {
-            return tweetMeta(meta, html: html, now: now)
+            var post = tweetMeta(meta, html: html, now: now)
+            // The page holds the post the reader shows, so a list row can have all of it without another fetch.
+            let user = page.path(percentEncoded: false).split(separator: "/").first.map(String.init) ?? ""
+            post.postPreview = TweetExtraction.fromPage(raw: html, canonical: pageURL, user: user).flatMap { PostPreview.fromMarkup($0.contentHtml) }
+            return post
         }
         let ld = PageMeta.ldArticle(in: doc)
         let docTitle = titleText(doc)

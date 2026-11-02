@@ -38,6 +38,14 @@ struct SettingsAppearancePane: View {
                     SettingsSegmented(label: "Density", selection: $model.settings.listDensity,
                                       options: ListDensitySetting.allCases.map { ($0, $0.label) })
                 }
+                #if os(iOS)
+                if compact {
+                    SettingsRow(label: "Post length", hint: model.settings.postLength == .long ? "Read posts in the list, with Show more for the rest" : "Three lines of each post") {
+                        SettingsSegmented(label: "Post length", selection: $model.settings.postLength,
+                                          options: PostLengthSetting.allCases.map { ($0, $0.label) })
+                    }
+                }
+                #endif
                 SettingsRow(label: "Thumbnails") {
                     SettingsSegmented(label: "Thumbnails", selection: $model.settings.listThumbnails,
                                       options: ListThumbnailSetting.allCases.map { ($0, $0.label) })

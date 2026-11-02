@@ -965,7 +965,7 @@ All in `App/OpenDispatch/Views/Settings/` (type names claimed; do not redeclare)
   `SettingsThemesPane` and `SettingsReaderPane` (font, size, spacing, width, highlight color, links, comments moved there
   from Appearance); `SettingsToggle`, `SettingsMenuPicker`, `SettingsSwatch` (SettingsAppearancePane.swift). Themes
   model: `ThemeBase`, `AppTheme`, `ThemePalette`, `ThemeColors`, `ThemeRuntime`, `AccentSetting` (Design/Themes.swift);
-  list rows: `ListLayout`, `EnvironmentValues.listLayout`, `UnreadDot` (Views/Shared/ListLayout.swift).
+  list rows: `ListLayout`, `EnvironmentValues.listLayout`, `UnreadDot` (Views/Shared/ListLayout.swift). iPhone Post length Long: `PhoneLongPost`, `ExpandedPosts` (Views/Feed/PhoneLongPost.swift), over Core's `PostPreview`, `Item.listPost`, `PostCut` (Models/PostPreview.swift; column `items.post_preview`, `ParsedItem.postPreview`, `ArticleMeta.postPreview`).
 - `ShortcutsView` (+ `SettingsKeyCap`): lists `ShortcutSection.all` with the keys in `AppSettings.shortcuts`; Edit opens
   `SettingsShortcutsPane`. Esc, the show-shortcuts key and the close button dismiss it.
 - `SendToView(item: FeedItem, size: CGFloat = 30, iconSize: CGFloat = 17)` — port of send-to.tsx for the reader

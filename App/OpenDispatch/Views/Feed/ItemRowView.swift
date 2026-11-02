@@ -8,7 +8,9 @@ import SwiftUI
 /// lines of text and (macOS/iPad) a one-line snippet, or for a quote post the quoted account and text
 /// (QuoteLine), with the post's first photo or video as the thumbnail.
 ///
-/// iPhone rows put the headline first (17 semibold, a post's text 17 regular, up to three lines) and the
+/// iPhone rows at Post length Long (the default) lead with the badge and "Source · 3h", then a post at length (`PhoneLongPost`), or
+/// an article's headline (17 semibold) beside an 80pt square thumbnail, or a YouTube video's title over its frame. At Short, they put
+/// the headline first (17 semibold, a post's text 17 regular, up to three lines) and the
 /// badge with "Source · 3h" under it, beside an 80pt square thumbnail; a YouTube video with a thumbnail
 /// instead leads with it full width at 16:9. No snippet. A topic's Hacker News or Reddit row adds its points and
 /// comments to the meta line ("Hacker News · 1d · ▲ 15 · 💬 4", drawn with SF Symbols; `DiscussionStats`). A news story with other
@@ -72,6 +74,13 @@ struct ItemRowView: View, Equatable {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        #if os(iOS)
+        .accessibilityActions {
+            if isPhone && layout.postLength == .long && isPhonePost {
+                Button(ExpandedPosts.shared.ids.contains(item.id) ? "Show Less" : "Show More") { ExpandedPosts.shared.toggle(item.id) }
+            }
+        }
+        #endif
     }
 
     // MARK: Layouts
@@ -120,8 +129,57 @@ struct ItemRowView: View, Equatable {
         }
     }
 
-    /// iPhone: headline, then the meta line; beside a square thumbnail, or under a full-width video frame.
+    /// iPhone: as Settings → Appearance → Lists → Post length says.
     @ViewBuilder private var phoneRow: some View {
+        #if os(iOS)
+        if layout.postLength == .long {
+            phoneLongRow
+        } else {
+            phoneShortRow
+        }
+        #else
+        phoneShortRow
+        #endif
+    }
+
+    #if os(iOS)
+    private var isPhonePost: Bool { TextFormat.isSocialPost(item.item.url) || isRedditThread }
+    private var isRedditThread: Bool { DiscussionPlace.thread(of: item.item.url) == .reddit }
+
+    /// Post length Long: the meta line first, then a post at length (`PhoneLongPost`), or a headline with its thumbnail or video frame.
+    @ViewBuilder private var phoneLongRow: some View {
+        let isSocial = TextFormat.isSocialPost(item.item.url)
+        let (name, handle) = isSocial ? TextFormat.splitHandle(item.item.author) : ("", nil)
+        let meta = metaLine(name: name.isEmpty ? sourceName : name, handle: handle)
+        if isPhonePost {
+            PhoneLongPost(item: item, heading: isRedditThread ? item.item.title : nil, textColor: titleColor, dims: dimsRead,
+                          showsMedia: layout.thumbnails != .off, thumbnailScale: layout.thumbnailScale) { meta }
+        } else {
+            let title = Text(item.item.title)
+                .font(dimsRead ? OFFont.phonePostText : OFFont.phoneItemTitle)
+                .tracking(-0.3)
+                .lineSpacing(2)
+                .foregroundStyle(titleColor)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 10) {
+                meta
+                if item.source.kind == .youtube && item.item.thumbnailUrl?.isEmpty == false && layout.thumbnails != .off {
+                    title
+                    thumbnail(.wide)
+                } else {
+                    HStack(alignment: .top, spacing: 14) {
+                        title.frame(maxWidth: .infinity, alignment: .leading)
+                        thumbnail(.square)
+                    }
+                }
+            }
+        }
+    }
+    #endif
+
+    /// Post length Short: headline, then the meta line; beside a square thumbnail, or under a full-width video frame.
+    @ViewBuilder private var phoneShortRow: some View {
         let isPost = TextFormat.isSocialPost(item.item.url)
         let (name, handle) = isPost ? TextFormat.splitHandle(item.item.author) : ("", nil)
         let text = VStack(alignment: .leading, spacing: 8) {

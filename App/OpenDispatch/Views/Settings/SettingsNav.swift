@@ -34,7 +34,7 @@ extension SettingsTab {
     var keywords: String {
         switch self {
         case .sources: "feeds folders add opml import export remove"
-        case .appearance: "theme color scheme light dark auto system accent lists density compact thumbnails unread read icons"
+        case .appearance: "theme color scheme light dark auto system accent lists density compact thumbnails unread read icons post length long short"
         case .themes: "theme colors palette custom light dark mode background accent"
         case .reader: "font serif sans size text line spacing width fill window highlight links underline comments"
         case .playback: "video youtube autoplay pop out floating picture in picture theater transcript blocked embed won't play nfl sponsorblock read aloud voice speed"

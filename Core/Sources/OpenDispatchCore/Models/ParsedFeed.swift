@@ -19,12 +19,16 @@ public struct ParsedItem: Sendable, Hashable {
     public var hnCommentsUrl: String?
     /// A post on X that quotes another: the quoted account's avatar.
     public var quoteAvatarUrl: String?
+    /// A post's whole text, media, quoted post and link card, for a list row that shows it at length.
+    public var postPreview: PostPreview?
 
     public init(
         guid: String, url: String, title: String, summary: String? = nil, author: String? = nil, publishedAt: Date,
         thumbnailUrl: String? = nil, videoId: String? = nil, durationSec: Int? = nil, audioUrl: String? = nil,
-        hnPoints: Int? = nil, hnComments: Int? = nil, hnCommentsUrl: String? = nil, quoteAvatarUrl: String? = nil
+        hnPoints: Int? = nil, hnComments: Int? = nil, hnCommentsUrl: String? = nil, quoteAvatarUrl: String? = nil,
+        postPreview: PostPreview? = nil
     ) {
+        self.postPreview = postPreview
         self.guid = guid
         self.url = url
         self.title = title

@@ -7,6 +7,8 @@ struct ListLayout: Equatable, Sendable {
     var thumbnails: ListThumbnailSetting = .small
     var unreadMarker: UnreadMarkerSetting = .dim
     var sourceIcons: SourceIconSetting = .color
+    /// iPhone rows only.
+    var postLength: PostLengthSetting = .long
 
     var isCompact: Bool { density == .compact }
 

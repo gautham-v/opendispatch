@@ -68,6 +68,8 @@ enum OFIcon: String, CaseIterable {
     case saved = "bookmark.circle"
     /// The quoted post under a quote post on X (list rows)
     case quoted = "arrow.turn.down.right"
+    /// A post's link card with only a domain (iPhone list rows)
+    case link = "link"
     /// Highlights & Notes (reader bar, sidebar row)
     case highlighter = "highlighter"
     /// History

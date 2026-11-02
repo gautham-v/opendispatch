@@ -241,7 +241,7 @@ public enum Queries {
     }
 
     /// Insert or update items by (source_id, guid), with the fetcher.ts conflict rules:
-    /// title/url/hn_* replaced; summary/thumbnail/audio/duration/quote avatar kept when the new value is null;
+    /// title/url/hn_* replaced; summary/thumbnail/audio/duration/quote avatar/post preview kept when the new value is null;
     /// content, saved state and published_at untouched. Returns one row per input, in order.
     @discardableResult
     public static func upsertItems(_ db: Database, sourceId: Int64, items: [ParsedItem], now: Date = Date()) throws -> [UpsertedItem] {
@@ -249,8 +249,8 @@ public enum Queries {
         var existing = Set(try String.fetchAll(db, sql: "SELECT guid FROM items WHERE source_id = ?", arguments: [sourceId]))
         let sql = """
             INSERT INTO items (source_id, guid, url, title, summary, author, published_at, thumbnail_url, video_id,
-              duration_sec, audio_url, hn_points, hn_comments, hn_comments_url, quote_avatar_url, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              duration_sec, audio_url, hn_points, hn_comments, hn_comments_url, quote_avatar_url, post_preview, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(source_id, guid) DO UPDATE SET
               title = excluded.title,
               url = excluded.url,
@@ -261,7 +261,8 @@ public enum Queries {
               hn_points = excluded.hn_points,
               hn_comments = excluded.hn_comments,
               hn_comments_url = excluded.hn_comments_url,
-              quote_avatar_url = coalesce(excluded.quote_avatar_url, items.quote_avatar_url)
+              quote_avatar_url = coalesce(excluded.quote_avatar_url, items.quote_avatar_url),
+              post_preview = coalesce(excluded.post_preview, items.post_preview)
             RETURNING id, url, thumbnail_url, published_at
             """
         let statement = try db.cachedStatement(sql: sql)
@@ -270,7 +271,7 @@ public enum Queries {
         for it in items {
             let args: StatementArguments = [
                 sourceId, it.guid, it.url, it.title, it.summary, it.author, it.publishedAt, it.thumbnailUrl, it.videoId,
-                it.durationSec, it.audioUrl, it.hnPoints, it.hnComments, it.hnCommentsUrl, it.quoteAvatarUrl, now,
+                it.durationSec, it.audioUrl, it.hnPoints, it.hnComments, it.hnCommentsUrl, it.quoteAvatarUrl, it.postPreview?.json, now,
             ]
             guard let row = try Row.fetchOne(statement, arguments: args) else { continue }
             let inserted = !existing.contains(it.guid)
@@ -320,11 +321,14 @@ public enum Queries {
 
     /// Cache a fresh extraction (content-cache.ts `contentUpdate`). No-op when contentHtml is nil.
     /// content_rendered is always written; thumbnail_url takes the lead image only when none is stored and it isn't a profile picture.
+    /// A post's markup also replaces its list preview, since the reader reads more of it than a refresh can.
     public static func cacheContent(_ db: Database, itemId: Int64, result: ExtractResult) throws {
         guard let html = result.contentHtml else { return }
         try db.execute(sql: """
-            UPDATE items SET content_html = ?, content_rendered = ?, thumbnail_url = coalesce(thumbnail_url, ?) WHERE id = ?
-            """, arguments: [html, result.rendered, result.leadImage.flatMap { LeadImage.isAccountPicture($0) ? nil : $0 }, itemId])
+            UPDATE items SET content_html = ?, content_rendered = ?, thumbnail_url = coalesce(thumbnail_url, ?),
+              post_preview = coalesce(?, post_preview) WHERE id = ?
+            """, arguments: [html, result.rendered, result.leadImage.flatMap { LeadImage.isAccountPicture($0) ? nil : $0 },
+                             PostPreview.fromMarkup(html)?.json, itemId])
     }
 
     /// Delete unsaved items published before `cutoff` (opened links: opened before it), except those

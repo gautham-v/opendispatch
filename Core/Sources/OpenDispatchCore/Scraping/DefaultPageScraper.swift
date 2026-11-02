@@ -153,7 +153,8 @@ public struct DefaultPageScraper: PageScraper {
                 author: m.author,
                 publishedAt: m.publishedAt ?? fallbackDate,
                 thumbnailUrl: m.thumbnailUrl,
-                quoteAvatarUrl: m.quoteAvatarUrl
+                quoteAvatarUrl: m.quoteAvatarUrl,
+                postPreview: m.postPreview
             ))
         } catch {
             return .retry  // timeout / network: retry next refresh
@@ -174,7 +175,7 @@ public struct DefaultPageScraper: PageScraper {
         let m = PageScraping.extractArticleMeta(html: html, pageURL: res.url?.absoluteString ?? url, now: now)
         var item = ParsedItem(
             guid: url, url: url, title: m.title ?? url, summary: m.summary, author: m.author,
-            publishedAt: m.publishedAt ?? now, thumbnailUrl: m.thumbnailUrl, quoteAvatarUrl: m.quoteAvatarUrl)
+            publishedAt: m.publishedAt ?? now, thumbnailUrl: m.thumbnailUrl, quoteAvatarUrl: m.quoteAvatarUrl, postPreview: m.postPreview)
         // A profile's picture is the account's, not a picture to lead with.
         if InstagramFeed.handle(ofProfile: url) != nil { item.thumbnailUrl = nil }
         if let videoID {

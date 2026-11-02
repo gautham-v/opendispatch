@@ -148,6 +148,16 @@ enum SourceIconSetting: String, Codable, CaseIterable, Identifiable, Sendable {
     var label: String { rawValue.capitalized }
 }
 
+/// How much of a post an iPhone list row shows. The Mac and iPad keep their rows, with the reader beside the list.
+enum PostLengthSetting: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Three lines beside a thumbnail, the original look.
+    case short
+    /// Up to six lines, big media, the quoted post and link card, with Show more for the rest.
+    case long
+    var id: String { rawValue }
+    var label: String { rawValue.capitalized }
+}
+
 /// Links in articles (reader.css data-links).
 enum LinkStyleSetting: String, Codable, CaseIterable, Identifiable, Sendable {
     /// Accent color, underlined (the original look).
@@ -223,6 +233,7 @@ struct AppSettings: Codable, Equatable, Sendable {
     var listThumbnails: ListThumbnailSetting = .small
     var unreadMarker: UnreadMarkerSetting = .dim
     var sourceIcons: SourceIconSetting = .color
+    var postLength: PostLengthSetting = .long
     /// The color of a highlight made without picking one (Add Note, the first color in the menus).
     var highlightColor: HighlightColor = .yellow
     var linkStyle: LinkStyleSetting = .underlined
@@ -277,6 +288,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         listThumbnails = (try? c.decode(ListThumbnailSetting.self, forKey: .listThumbnails)) ?? .small
         unreadMarker = (try? c.decode(UnreadMarkerSetting.self, forKey: .unreadMarker)) ?? .dim
         sourceIcons = (try? c.decode(SourceIconSetting.self, forKey: .sourceIcons)) ?? .color
+        postLength = (try? c.decode(PostLengthSetting.self, forKey: .postLength)) ?? .long
         highlightColor = (try? c.decode(HighlightColor.self, forKey: .highlightColor)) ?? .yellow
         linkStyle = (try? c.decode(LinkStyleSetting.self, forKey: .linkStyle)) ?? .underlined
         shortcuts = (try? c.decode(ShortcutMap.self, forKey: .shortcuts)) ?? ShortcutMap()
@@ -298,7 +310,7 @@ struct AppSettings: Codable, Equatable, Sendable {
 
     /// What list rows read from the environment (`\.listLayout`).
     var listLayout: ListLayout {
-        ListLayout(density: listDensity, thumbnails: listThumbnails, unreadMarker: unreadMarker, sourceIcons: sourceIcons)
+        ListLayout(density: listDensity, thumbnails: listThumbnails, unreadMarker: unreadMarker, sourceIcons: sourceIcons, postLength: postLength)
     }
 
     static func load(from defaults: UserDefaults = .standard) -> AppSettings {

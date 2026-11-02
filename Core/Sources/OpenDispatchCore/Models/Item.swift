@@ -40,6 +40,8 @@ public struct Item: Sendable, Hashable, Identifiable {
     /// A video whose owner keeps it out of other apps: true when it won't play here, false when it will, nil when it isn't
     /// known yet (`YouTubeEmbedChecking`, or the player's own error). Per device: it isn't part of the saved item's sync record.
     public var embedBlocked: Bool?
+    /// A post at length, as JSON (`PostPreview`); read it through `listPost`.
+    public var postPreviewJSON: String?
 
     public init(
         id: Int64 = 0, sourceId: Int64, guid: String, url: String, title: String, summary: String? = nil,
@@ -47,8 +49,9 @@ public struct Item: Sendable, Hashable, Identifiable {
         thumbnailUrl: String? = nil, thumbnailChecked: Bool = false, videoId: String? = nil, durationSec: Int? = nil,
         audioUrl: String? = nil, hnPoints: Int? = nil, hnComments: Int? = nil, hnCommentsUrl: String? = nil,
         quoteAvatarUrl: String? = nil, isSaved: Bool = false, createdAt: Date = Date(), storyId: Int64? = nil,
-        storyAt: Date? = nil, embedBlocked: Bool? = nil
+        storyAt: Date? = nil, embedBlocked: Bool? = nil, postPreviewJSON: String? = nil
     ) {
+        self.postPreviewJSON = postPreviewJSON
         self.id = id
         self.sourceId = sourceId
         self.guid = guid
@@ -111,6 +114,7 @@ extension Item: FetchableRecord, MutablePersistableRecord {
         public static let storyId = Column("story_id")
         public static let storyAt = Column("story_at")
         public static let embedBlocked = Column("embed_blocked")
+        public static let postPreview = Column("post_preview")
     }
 
     public init(row: Row) throws {
@@ -139,6 +143,7 @@ extension Item: FetchableRecord, MutablePersistableRecord {
         storyId = row["story_id"]
         storyAt = row["story_at"]
         embedBlocked = row["embed_blocked"]
+        postPreviewJSON = row["post_preview"]
     }
 
     public func encode(to container: inout PersistenceContainer) throws {
@@ -181,7 +186,7 @@ extension Item: FetchableRecord, MutablePersistableRecord {
             Columns.contentRendered, Columns.author, Columns.publishedAt, Columns.thumbnailUrl,
             Columns.thumbnailChecked, Columns.videoId, Columns.durationSec, Columns.audioUrl, Columns.hnPoints,
             Columns.hnComments, Columns.hnCommentsUrl, Columns.quoteAvatarUrl, Columns.isSaved, Columns.createdAt,
-            Columns.storyId, Columns.storyAt, Columns.embedBlocked,
+            Columns.storyId, Columns.storyAt, Columns.embedBlocked, Columns.postPreview,
             (Columns.contentHtml != nil).forKey("has_content"),
         ]
     }
