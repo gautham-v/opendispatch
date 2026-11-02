@@ -411,7 +411,7 @@ body { overflow-y: hidden; }
 .prose-opendispatch .x-strip::-webkit-scrollbar { display: none; }
 .prose-opendispatch .x-strip img { flex: none; width: 54px; height: 62px; max-width: none; margin: 0; border-radius: 6px; object-fit: cover; opacity: 0.55; cursor: pointer; }
 .prose-opendispatch .x-strip img:hover { opacity: 0.8; }
-.prose-opendispatch .x-strip img.x-on { opacity: 1; outline: 2px solid var(--ink); outline-offset: -2px; }
+.prose-opendispatch .x-strip img.x-on { opacity: 1; }
 /* The likes and date sit right under the pictures, not as a footer. */
 .prose-opendispatch .x-gallery + .x-foot,
 .prose-opendispatch .x-media + .x-foot { padding-top: 0; border-top: 0; }
