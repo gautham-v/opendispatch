@@ -5,7 +5,7 @@
 //   swift scripts/asc-distribute.swift <CFBundleVersion>
 //
 // Waits for App Store Connect to finish processing that build (up to 30 minutes), then adds it to the
-// group. Reads ASC_KEY (path to the .p8), ASC_KEY_ID and ASC_ISSUER from the environment.
+// group without notifying testers. Reads ASC_KEY (path to the .p8), ASC_KEY_ID and ASC_ISSUER from the environment.
 import CryptoKit
 import Foundation
 
@@ -73,6 +73,18 @@ while Date() < deadline {
 guard let buildID else {
     print("build \(buildNumber) didn't finish processing in 30 minutes; add it to the group later")
     exit(1)
+}
+
+// Turn off the "now available to test" email and push for this build. It has to happen before the build
+// joins the group. A failure here only means testers get notified, so it doesn't stop the release.
+let (detailStatus, detail) = try await request("GET", "/builds/\(buildID)/buildBetaDetail")
+if detailStatus == 200, let detailID = (detail["data"] as? [String: Any])?["id"] as? String {
+    let (patchStatus, patch) = try await request("PATCH", "/buildBetaDetails/\(detailID)", body: ["data": [
+        "type": "buildBetaDetails", "id": detailID, "attributes": ["autoNotifyEnabled": false],
+    ]])
+    if patchStatus != 200 { print("warning: testers will be notified of this build (\(patchStatus)): \(patch)") }
+} else {
+    print("warning: testers will be notified of this build (\(detailStatus)): \(detail)")
 }
 
 let (status, json) = try await request("POST", "/betaGroups/\(internalGroup)/relationships/builds",
