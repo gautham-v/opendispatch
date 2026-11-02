@@ -117,6 +117,45 @@ final class ReaderWeakScriptHandler: NSObject, WKScriptMessageHandler {
 /// height-fitted article, or the YouTube player, scrolls with the rest of the reader. Horizontal scrolls
 /// (wide code blocks, tables) stay with the page.
 final class ReaderFittedWebView: WKWebView {
+    /// The window whose reader is under something drawn in the same window (Settings, the picture viewer). A web view follows the
+    /// mouse through its own tracking area, whatever is on top of it, and its page sets the cursor (the zoom cursor on a picture,
+    /// the I-beam on text) and hover states. What is on top stops clicks but not this, and WebKit's tracking doesn't go through
+    /// `mouseMoved(with:)`, so the areas themselves come off while covered. A pop-out player's window isn't covered.
+    private static weak var coveredWindow: NSWindow?
+    private var suspendedTrackingAreas: [NSTrackingArea] = []
+
+    /// Something now covers (or no longer covers) the reader in `window`.
+    static func setCovered(_ covered: Bool, in window: NSWindow?) {
+        coveredWindow = covered ? window : nil
+        if let root = window?.contentView { setTracksMouse(!covered, under: root) }
+        if covered { NSCursor.arrow.set() }
+    }
+
+    private static func setTracksMouse(_ on: Bool, under view: NSView) {
+        if let webView = view as? ReaderFittedWebView {
+            webView.setTracksMouse(on)
+        } else {
+            view.subviews.forEach { setTracksMouse(on, under: $0) }
+        }
+    }
+
+    private func setTracksMouse(_ on: Bool) {
+        if on {
+            suspendedTrackingAreas.forEach(addTrackingArea)
+            suspendedTrackingAreas = []
+        } else {
+            suspendedTrackingAreas += trackingAreas
+            trackingAreas.forEach(removeTrackingArea)
+        }
+    }
+
+    /// A reader made while covered, or a player moving between its window and the pop-out.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        setTracksMouse(true)
+        if window != nil, window === Self.coveredWindow { setTracksMouse(false) }
+    }
+
     var forwardsVerticalScroll = true
     /// The article's actions, added to WebKit's right-click menu above Inspect Element.
     var extraMenuItems: (() -> [NSMenuItem])?

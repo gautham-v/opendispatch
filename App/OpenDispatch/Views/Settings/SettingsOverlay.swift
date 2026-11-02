@@ -8,6 +8,7 @@ import SwiftUI
 /// shortcuts stand down while it's up (KeyboardShortcuts.swift).
 struct SettingsOverlay: View {
     @Environment(AppModel.self) private var model
+    @State private var coveredWindow: NSWindow?
 
     var body: some View {
         ZStack {
@@ -31,7 +32,13 @@ struct SettingsOverlay: View {
         .ignoresSafeArea()
         // Take focus from whatever had it under the backdrop (e.g. the sidebar filter), so typing
         // doesn't land in a field the panel covers.
-        .onAppear { NSApp.keyWindow?.makeFirstResponder(nil) }
+        .onAppear {
+            NSApp.keyWindow?.makeFirstResponder(nil)
+            // The reader's pages stop following the mouse under the panel.
+            coveredWindow = NSApp.keyWindow
+            ReaderFittedWebView.setCovered(true, in: coveredWindow)
+        }
+        .onDisappear { ReaderFittedWebView.setCovered(false, in: coveredWindow) }
     }
 
     private static let maxSize = CGSize(width: 860, height: 640)

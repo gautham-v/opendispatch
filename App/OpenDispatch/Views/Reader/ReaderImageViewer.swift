@@ -270,6 +270,7 @@ enum ReaderImageOverlay {
         view.autoresizingMask = [.width, .height]
         content.addSubview(view, positioned: .above, relativeTo: nil)
         host = view
+        ReaderFittedWebView.setCovered(true, in: window)
         restoredResponder = window.firstResponder
         window.makeFirstResponder(view)
         sideways = 0
@@ -283,6 +284,7 @@ enum ReaderImageOverlay {
         let window = view.window
         view.removeFromSuperview()
         host = nil
+        ReaderFittedWebView.setCovered(false, in: window)
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
         if let restoredResponder { window?.makeFirstResponder(restoredResponder) }
