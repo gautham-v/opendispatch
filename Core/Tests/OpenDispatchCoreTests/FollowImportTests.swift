@@ -259,6 +259,56 @@ struct FollowImportTests {
         }
     }
 
+    // MARK: Mastodon
+
+    @Test func mastodonHandlesAsTyped() {
+        #expect(FollowHandle.cleaned("@you@mastodon.social", for: .mastodon) == "you@mastodon.social")
+        #expect(FollowHandle.cleaned("https://hachyderm.io/@you", for: .mastodon) == "you@hachyderm.io")
+        #expect(FollowHandle.cleaned(" you@fosstodon.org ", for: .mastodon) == "you@fosstodon.org")
+    }
+
+    @Test func mastodonFollowsItsPagesAndLeavesOutBotsAndLocked() async throws {
+        let first = #"[{"acct":"gruber@mastodon.social","display_name":"John Gruber","url":"https://mastodon.social/@gruber","followers_count":90000,"avatar_static":"https://a/g.png"},{"acct":"robot","display_name":"Robot","url":"https://x.y/@robot","bot":true},{"acct":"quiet","display_name":"","url":"https://x.y/@quiet","locked":true,"followers_count":5}]"#
+        let second = #"[{"acct":"molly","display_name":"Molly White","url":"https://hachyderm.io/@molly"}]"#
+        let reader = DefaultFollowReader(fetch: { url in
+            if url.hasSuffix("lookup?acct=me") { return (Data(#"{"id":"7","following_count":4}"#.utf8), Self.response(url)) }
+            if url.contains("max_id=9") { return (Data(second.utf8), Self.response(url)) }
+            #expect(url == "https://mastodon.social/api/v1/accounts/7/following?limit=80")
+            let res = HTTPURLResponse(url: URL(string: url)!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: [
+                "Link": #"<https://mastodon.social/api/v1/accounts/7/following?limit=80&max_id=9>; rel="next", <https://mastodon.social/x?since_id=1>; rel="prev""#,
+            ])!
+            return (Data(first.utf8), res)
+        }, redditPage: { _ in "" })
+        let read = try await reader.read(.mastodon, handle: "me@mastodon.social", progress: { _ in })
+        #expect(read.followedTotal == 4)
+        #expect(read.accounts.map { $0.result.title } == ["John Gruber", "quiet", "Molly White"])
+        #expect(read.accounts[0].result.feedUrl == "https://mastodon.social/@gruber.rss")
+        let list = FollowRanking.list(.mastodon, read: read)
+        #expect(Set(list.ranked.map(\.title)) == ["John Gruber", "Molly White"])
+        #expect(list.leftOut == 1)
+    }
+
+    @Test func mastodonNeedsItsServer() async {
+        let reader = DefaultFollowReader(fetch: { url in (Data(), Self.response(url, 500)) }, redditPage: { _ in "" })
+        await #expect(throws: FeedDetectionError("Type your handle with its server, like you@mastodon.social.")) {
+            _ = try await reader.read(.mastodon, handle: "justme", progress: { _ in })
+        }
+    }
+
+    @Test func mastodonHiddenList() async {
+        let reader = DefaultFollowReader(fetch: { url in
+            url.contains("lookup") ? (Data(#"{"id":"7","following_count":40}"#.utf8), Self.response(url)) : (Data("[]".utf8), Self.response(url))
+        }, redditPage: { _ in "" })
+        await #expect(throws: FeedDetectionError("@me hides who they follow on mastodon.social.")) {
+            _ = try await reader.read(.mastodon, handle: "me@mastodon.social", progress: { _ in })
+        }
+    }
+
+    @Test func mastodonStaysOffTheBoard() {
+        #expect(!FollowApp.boardApps.contains(.mastodon))
+        #expect(FollowApp.allCases.contains(.mastodon))
+    }
+
     // MARK: Accounts
 
     @Test func youtubeIsASignIn() {

@@ -447,26 +447,32 @@ struct FollowAppTiles: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: FollowApp.allCases.count), spacing: 6) {
-            ForEach(FollowApp.allCases) { app in
-                FollowAppTile(app: app, isAdded: model.followImport.added[app] != nil) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: FollowApp.boardApps.count), spacing: 6) {
+            ForEach(FollowApp.boardApps) { app in
+                FollowTile(title: app.name, isAdded: model.followImport.added[app] != nil,
+                           accessibility: model.followImport.added[app] != nil ? "\(app.name), added. Bring more from \(app.name)" : "Bring who you follow on \(app.name)") {
                     model.beginFollowImport(app)
+                } icon: {
+                    SourceBadge(host: app.host, title: app.name, size: 22)
                 }
             }
         }
     }
 }
 
-private struct FollowAppTile: View {
-    let app: FollowApp
-    let isAdded: Bool
+/// A square button with an icon and a name under it: the board's apps, and the apps to add in Settings › Integrations.
+struct FollowTile<Icon: View>: View {
+    let title: String
+    var isAdded = false
+    let accessibility: String
     let action: () -> Void
+    @ViewBuilder var icon: () -> Icon
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
             VStack(spacing: 5) {
-                SourceBadge(host: app.host, title: app.name, size: 22)
+                icon()
                     .frame(maxWidth: .infinity)
                     .frame(height: 44)
                     .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(hovering ? Color.ofHover : .clear))
@@ -481,7 +487,7 @@ private struct FollowAppTile: View {
                                 .offset(x: 3, y: -3)
                         }
                     }
-                Text(app.name)
+                Text(title)
                     .font(OFFont.ui(10.5))
                     .foregroundStyle(.ofMuted)
                     .lineLimit(1)
@@ -491,6 +497,6 @@ private struct FollowAppTile: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .accessibilityLabel(isAdded ? "\(app.name), added. Bring more from \(app.name)" : "Bring who you follow on \(app.name)")
+        .accessibilityLabel(accessibility)
     }
 }

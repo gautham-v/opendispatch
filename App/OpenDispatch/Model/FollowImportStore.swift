@@ -34,6 +34,11 @@ final class FollowImportStore {
     var hasAdded: Bool { !added.isEmpty }
     /// Set when `select` finds the app needs a sign-in, for the sheet to open it.
     var pendingSignIn: WebAccount?
+    /// Handles that have been read, by app, on this device: what connects an app with a public list.
+    private(set) var savedHandles: [String: String] = UserDefaults.standard.dictionary(forKey: FollowImportStore.handlesKey) as? [String: String] ?? [:] {
+        didSet { UserDefaults.standard.set(savedHandles, forKey: Self.handlesKey) }
+    }
+    private static let handlesKey = "followImport.handles"
 
     @ObservationIgnored private let reader: any FollowReading
 
@@ -42,6 +47,17 @@ final class FollowImportStore {
     }
 
     func phase(_ app: FollowApp) -> Phase { phases[app] ?? .idle }
+
+    func savedHandle(_ app: FollowApp) -> String? { savedHandles[app.rawValue] }
+
+    /// Signed out, or the handle forgotten: the list goes too, since the next one may be someone else's.
+    func forget(_ app: FollowApp) {
+        savedHandles[app.rawValue] = nil
+        phases[app] = nil
+        lists[app] = nil
+        selected[app] = nil
+        expanded.remove(app)
+    }
 
     /// Opens an app's list: straight to it if it was read, otherwise whatever its list needs first. Instagram always asks first, since
     /// reading the list is a request made of the person's own account.
@@ -52,7 +68,11 @@ final class FollowImportStore {
         case .idle, .needsHandle, .needsGoAhead, .failed: break
         }
         guard let account = app.account else {
-            phases[app] = .needsHandle
+            if let saved = savedHandle(app) {
+                read(app, handle: saved)
+            } else {
+                phases[app] = .needsHandle
+            }
             return
         }
         if app == .instagram {
@@ -99,6 +119,7 @@ final class FollowImportStore {
                     Task { @MainActor [weak self] in self?.reachedCount(found, in: app) }
                 })
                 finish(app, read: read)
+                if let handle { savedHandles[app.rawValue] = FollowHandle.cleaned(handle, for: app) }
             } catch DiscussionError.signInRequired {
                 // With a session cookie that the site no longer takes, the sign-in sheet would close itself and land back here.
                 if let account = app.account, await account.isSignedIn() {

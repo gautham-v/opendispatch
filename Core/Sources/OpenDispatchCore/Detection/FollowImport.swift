@@ -4,7 +4,10 @@ import Foundation
 /// the app's own sign-in, in a hidden web view; Substack and Bluesky lists are public and only need a handle. Everything is read
 /// on the device, once, when asked. Threads, TikTok, LinkedIn, Facebook and Twitch aren't here since the app has no feed for them.
 public enum FollowApp: String, CaseIterable, Identifiable, Sendable {
-    case youtube, instagram, x, reddit, substack, bluesky
+    case youtube, instagram, x, reddit, substack, bluesky, mastodon
+
+    /// The tiles on the Start here board, the apps most people have. Settings and the sheet list every app.
+    public static let boardApps: [FollowApp] = [.youtube, .instagram, .x, .reddit, .substack, .bluesky]
 
     public var id: String { rawValue }
 
@@ -16,6 +19,7 @@ public enum FollowApp: String, CaseIterable, Identifiable, Sendable {
         case .reddit: "Reddit"
         case .substack: "Substack"
         case .bluesky: "Bluesky"
+        case .mastodon: "Mastodon"
         }
     }
 
@@ -28,6 +32,7 @@ public enum FollowApp: String, CaseIterable, Identifiable, Sendable {
         case .reddit: "reddit.com"
         case .substack: "substack.com"
         case .bluesky: "bsky.app"
+        case .mastodon: "joinmastodon.org"
         }
     }
 
@@ -38,7 +43,7 @@ public enum FollowApp: String, CaseIterable, Identifiable, Sendable {
         case .instagram: .instagram
         case .x: .x
         case .reddit: .reddit
-        case .substack, .bluesky: nil
+        case .substack, .bluesky, .mastodon: nil
         }
     }
 
@@ -46,13 +51,30 @@ public enum FollowApp: String, CaseIterable, Identifiable, Sendable {
     public var shortlistSize: Int { self == .instagram ? 12 : 24 }
 
     public var handlePlaceholder: String {
-        self == .bluesky ? "you.bsky.social" : "yourhandle"
+        switch self {
+        case .bluesky: "you.bsky.social"
+        case .mastodon: "you@mastodon.social"
+        default: "yourhandle"
+        }
     }
 
     public var handleHint: String {
-        self == .bluesky
-            ? "No sign-in needed. Bluesky\u{2019}s follow lists are public."
-            : "No sign-in needed. Only the subscriptions you show on your profile come through."
+        switch self {
+        case .bluesky: "No sign-in needed. Bluesky\u{2019}s follow lists are public."
+        case .mastodon: "No sign-in needed. Your server shares your follow list unless you hid it."
+        default: "No sign-in needed. Only the subscriptions you show on your profile come through."
+        }
+    }
+
+    /// What connecting it does, for a tile's tooltip.
+    public var purpose: String {
+        switch self {
+        case .youtube: "Bring in your subscriptions."
+        case .instagram: "Read accounts you add as you, and bring in who you follow."
+        case .x: "See posts in Explore and replies in the reader, and bring in who you follow."
+        case .reddit: "Read Reddit as you, and bring in your communities."
+        case .substack, .bluesky, .mastodon: "Bring in who you follow. Only needs your handle."
+        }
     }
 
     /// "Who you follow on X", "Your YouTube subscriptions".
@@ -60,7 +82,7 @@ public enum FollowApp: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .youtube, .substack: "Your \(name) subscriptions"
         case .reddit: "Your Reddit communities"
-        case .instagram, .x, .bluesky: "Who you follow on \(name)"
+        case .instagram, .x, .bluesky, .mastodon: "Who you follow on \(name)"
         }
     }
 
@@ -68,16 +90,16 @@ public enum FollowApp: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .youtube, .substack: "subscribe to"
         case .reddit: "joined"
-        case .instagram, .x, .bluesky: "follow"
+        case .instagram, .x, .bluesky, .mastodon: "follow"
         }
     }
 
     /// What the list's own order and audience say about who matters: YouTube lists by relevance and Instagram by its own rank,
-    /// X and Bluesky put the latest follows first, Reddit lists by name.
+    /// X, Bluesky and Mastodon put the latest follows first, Reddit lists by name.
     var rankWeights: (position: Double, audience: Double) {
         switch self {
         case .youtube, .instagram, .substack: (1, 0)
-        case .x, .bluesky: (0.5, 0.5)
+        case .x, .bluesky, .mastodon: (0.5, 0.5)
         case .reddit: (0, 1)
         }
     }
@@ -179,6 +201,13 @@ public enum FollowRanking {
 public enum FollowHandle {
     public static func cleaned(_ typed: String, for app: FollowApp) -> String {
         var handle = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        if app == .mastodon {
+            // A profile link names the server: https://mastodon.social/@you is you@mastodon.social.
+            if let url = URL(string: handle), let host = url.host, let range = url.path.range(of: "/@") {
+                return String(url.path[range.upperBound...]) + "@" + host
+            }
+            return handle.hasPrefix("@") ? String(handle.dropFirst()) : handle
+        }
         if let range = handle.range(of: app == .bluesky ? "/profile/" : "/@") { handle = String(handle[range.upperBound...]) }
         handle = handle.split(separator: "/").first.map(String.init) ?? handle
         if handle.hasPrefix("@") { handle.removeFirst() }
@@ -272,6 +301,32 @@ enum FollowPages {
         return (accounts, listing["after"] as? String)
     }
 
+    // MARK: Mastodon
+
+    /// A page of `/api/v1/accounts/<id>/following`. Bots are out; a locked account has no public posts to read, so it counts as private.
+    static func mastodon(_ data: Data) -> [FollowedAccount]? {
+        guard let accounts = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { return nil }
+        return accounts.compactMap { account -> FollowedAccount? in
+            guard account["bot"] as? Bool != true, let acct = account["acct"] as? String, let url = account["url"] as? String, url.contains("/@") else { return nil }
+            let name = (account["display_name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let followers = account["followers_count"] as? Int
+            return FollowedAccount(
+                result: SourceSearchResult(title: name.isEmpty ? acct : name, subtitle: "Mastodon", feedUrl: url + ".rss", siteUrl: url, kind: .rss,
+                                           imageUrl: account["avatar_static"] as? String, handle: acct, audience: followers.map(XAccounts.followers), place: .mastodon),
+                followers: followers, isPrivate: account["locked"] as? Bool ?? false)
+        }
+    }
+
+    /// The next page in a `Link` header.
+    static func nextPage(link: String?) -> String? {
+        guard let link else { return nil }
+        for part in link.split(separator: ",") where part.contains("rel=\"next\"") {
+            guard let open = part.firstIndex(of: "<"), let close = part.firstIndex(of: ">"), open < close else { continue }
+            return String(part[part.index(after: open)..<close])
+        }
+        return nil
+    }
+
     // MARK: Substack
 
     /// A public profile's subscriptions. Substack's own newsletter, which everyone gets, is left out.
@@ -305,6 +360,7 @@ public struct DefaultFollowReader: FollowReading {
     static let maxReddit = 300
     static let maxX = 500
     static let maxInstagram = 200
+    static let maxMastodon = 400
     /// Bluesky's lists have no audience, and profiles come 25 a request, so only the latest follows get one.
     static let blueskyProfiles = 150
 
@@ -331,6 +387,7 @@ public struct DefaultFollowReader: FollowReading {
         switch app {
         case .bluesky: return try await bluesky(handle ?? "", progress: progress)
         case .substack: return try await substack(handle ?? "", progress: progress)
+        case .mastodon: return try await mastodon(handle ?? "", progress: progress)
         case .reddit: return try await reddit(progress: progress)
         case .x, .instagram, .youtube:
             #if canImport(WebKit)
@@ -414,6 +471,35 @@ public struct DefaultFollowReader: FollowReading {
             return FollowedAccount(result: result, followers: followers)
         }
         return FollowRead(accounts: accounts, followedTotal: total)
+    }
+
+    private struct MastodonOwner: Decodable {
+        let id: String
+        let following_count: Int?
+    }
+
+    private func mastodon(_ typed: String, progress: @Sendable (Int) -> Void) async throws -> FollowRead {
+        let handle = FollowHandle.cleaned(typed, for: .mastodon)
+        let parts = handle.split(separator: "@").map(String.init)
+        guard parts.count == 2, parts[1].contains("."), parts[1].allSatisfy({ $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }) else {
+            throw FeedDetectionError("Type your handle with its server, like you@mastodon.social.")
+        }
+        let server = "https://\(parts[1])"
+        let owner = try JSONDecoder().decode(MastodonOwner.self, from: try await answer(
+            "\(server)/api/v1/accounts/lookup?acct=\(DefaultSocialAccounts.encoded(parts[0]))", missing: "\(parts[1]) has no account named @\(parts[0])."))
+        var accounts: [FollowedAccount] = []
+        var next: String? = "\(server)/api/v1/accounts/\(owner.id)/following?limit=80"
+        while let url = next, accounts.count < Self.maxMastodon {
+            let (data, res) = try await fetch(url)
+            guard (200..<300).contains(res.statusCode), let page = FollowPages.mastodon(data) else { break }
+            accounts += page
+            progress(accounts.count)
+            next = FollowPages.nextPage(link: res.value(forHTTPHeaderField: "Link"))
+        }
+        if accounts.isEmpty, (owner.following_count ?? 0) > 0 {
+            throw FeedDetectionError("@\(parts[0]) hides who they follow on \(parts[1]).")
+        }
+        return FollowRead(accounts: accounts, followedTotal: owner.following_count)
     }
 
     private func substack(_ typed: String, progress: @Sendable (Int) -> Void) async throws -> FollowRead {

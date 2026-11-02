@@ -1,18 +1,17 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// Integrations pane (IntegrationsPane): first the sites the app is signed in to (X for Explore's posts and their
-/// replies, Reddit optionally), each with Sign In… or Sign Out. After them, paywalled articles: what the lists do with
-/// sites you aren't signed in to (Show, Mark, Hide), the sites the app knows have a paywall (and any it is signed in to)
-/// with Sign In… or Sign Out, and a field to sign in to a site by its domain. Last, the send targets: Readwise Reader
-/// token and webhook URL, saved together with Save; each configured target has a test button and Remove. The token
-/// never comes back from the Keychain: the field starts empty and the status shows its hint ("Token …abcd"). Below
-/// them, the Copy as Markdown line that starts every copy; unlike the rest it applies as you leave the field.
+/// Integrations pane: one line per thing, with the explanations behind an info button. Connected lists the apps signed in to or
+/// read by handle, each with Bring In and a menu to sign out; Add an app has a tile for each of the others and for OPML. Send to has
+/// Readwise Reader, the webhook and Copy as Markdown, each opening its own form in place (the token never comes back from the
+/// Keychain: the field starts empty and the row shows its hint, "Token …abcd"). Last, paywalled articles: what the lists do with sites
+/// you aren't signed in to, the sites known to have a paywall, and a field to sign in to one by its domain.
 struct SettingsIntegrationsPane: View {
     @Environment(AppModel.self) private var model
     @Environment(\.settingsCompact) private var compact
 
     private enum Field: Hashable { case token, webhook, copyPrompt, newSite }
+    private enum SendRow: Hashable { case readwise, webhook, copy }
     private enum TestState: Equatable {
         case running
         case ok(String)
@@ -33,6 +32,9 @@ struct SettingsIntegrationsPane: View {
     @State private var signingIn: SignInTarget?
     /// The sheet for bringing who you follow in from another app.
     @State private var importingFollows = false
+    @State private var importingOPML = false
+    /// The send target whose form is open.
+    @State private var openSend: SendRow?
     /// The domain typed to add a site.
     @State private var newSite = ""
     @FocusState private var focus: Field?
@@ -47,20 +49,18 @@ struct SettingsIntegrationsPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsPaneHeading(
-                title: "Integrations",
-                hint: "The sites the app is signed in to, and where the reader sends items: Readwise Reader, your own webhook, or the clipboard. Stored on this device; the Readwise token is kept in the Keychain."
-            )
-            accountsSection
+            connectedSection
+            addAppSection
+            sendSection
             paywallSection
-            readwiseSection
-            webhookSection
-            footer
-            copySection
         }
         .sheet(item: $signingIn, onDismiss: { Task { await model.didCloseSignIn() } }) { target in
             WebSignInView(target: target, onDone: { if case .site(let site, _) = target { model.accounts.signIn(site: site) } })
         }
+        .sheet(isPresented: $importingFollows) {
+            FollowImportView().environment(model)
+        }
+        .opmlImporter(isPresented: $importingOPML)
         .task { await model.accounts.refresh() }
         .onChange(of: focus) { old, _ in if old == .copyPrompt { commitPrompt() } }
         .onDisappear {
@@ -69,95 +69,210 @@ struct SettingsIntegrationsPane: View {
         }
     }
 
-    // MARK: Sections
+    // MARK: Apps
 
-    private var readwiseSection: some View {
-        SettingsSection(title: "Readwise Reader") {
-            status(state.readwiseConfigured, state.readwiseConfigured ? "Token \(state.readwiseTokenHint ?? "saved")" : "Not set up")
-        } content: {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 0) {
-                    Text("Access token from ")
-                    Link("readwise.io/access_token", destination: Self.readwiseTokenURL)
-                        .foregroundStyle(.ofAccent)
-                    Text(state.readwiseConfigured ? ". Paste a new one to replace it." : ".")
+    private func isConnected(_ app: FollowApp) -> Bool {
+        if let account = app.account { return model.accounts.isSignedIn(account) }
+        return model.followImport.savedHandle(app) != nil
+    }
+
+    private func bringIn(_ app: FollowApp) {
+        importingFollows = true
+        Task { await model.followImport.select(app) }
+    }
+
+    private var connectedSection: some View {
+        let apps = FollowApp.allCases.filter(isConnected)
+        return IntegrationsSection("Connected", info: "OpenDispatch keeps its own sign-ins on this device; it can\u{2019}t use your browser\u{2019}s. Posts and replies are read only when you search or open them, and Instagram accounts you add are read at each refresh. It never posts or follows anyone.") {
+            if apps.isEmpty {
+                IntegrationRow(title: "Nothing yet. Pick an app below.", muted: true) { EmptyView() } trailing: { EmptyView() }
+            }
+            ForEach(apps) { app in
+                IntegrationRow(title: app.name, detail: model.followImport.savedHandle(app).map { "@" + $0 }) {
+                    SourceBadge(host: app.host, title: app.name, size: 24)
+                } trailing: {
+                    Button("Bring In") { bringIn(app) }
+                        .buttonStyle(SettingsSmallButtonStyle())
+                        .accessibilityLabel("Bring in who you follow on \(app.name)")
+                    Menu {
+                        if let account = app.account {
+                            Button("Sign Out") {
+                                model.followImport.forget(app)
+                                Task { await model.accounts.signOut(account) }
+                            }
+                        } else {
+                            Button("Forget Handle") { model.followImport.forget(app) }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.ofMuted)
+                            .frame(width: compact ? 36 : 26, height: compact ? 40 : 28)
+                            .contentShape(Rectangle())
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .accessibilityLabel("More for \(app.name)")
                 }
+            }
+        }
+    }
+
+    private var addAppSection: some View {
+        let apps = FollowApp.allCases.filter { !isConnected($0) }
+        return VStack(alignment: .leading, spacing: 0) {
+            IntegrationsHeader(title: "Add an app")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), spacing: 8)], spacing: 10) {
+                ForEach(apps) { app in
+                    FollowTile(title: app.name, accessibility: "\(app.name). \(app.purpose)") {
+                        if let account = app.account { signingIn = .account(account) } else { bringIn(app) }
+                    } icon: {
+                        SourceBadge(host: app.host, title: app.name, size: 22)
+                    }
+                    .help(app.purpose)
+                }
+                FollowTile(title: "OPML", accessibility: "Import from another reader or a podcast app, with an OPML file") {
+                    importingOPML = true
+                } icon: {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.system(size: 17))
+                        .foregroundStyle(.ofMuted)
+                }
+                .help("Import from another reader or a podcast app, with an OPML file.")
+            }
+            .padding(.horizontal, compact ? 20 : 0)
+            .padding(.bottom, 22)
+        }
+    }
+
+    // MARK: Send to
+
+    private var sendSection: some View {
+        IntegrationsSection("Send to", info: "Where the reader sends items. Stored on this device; the Readwise token is kept in the Keychain.") {
+            sendRow(.readwise, title: "Readwise Reader", detail: state.readwiseConfigured ? "Token \(state.readwiseTokenHint ?? "saved")" : nil,
+                    isSetUp: state.readwiseConfigured) {
+                SourceBadge(host: "readwise.io", title: "Readwise", size: 24)
+            }
+            if openSend == .readwise {
+                readwiseForm
+                if state.readwiseConfigured { highlightsRow }
+                saveRow
+            }
+            sendRow(.webhook, title: "Webhook", detail: state.webhookConfigured ? "On" : nil, isSetUp: state.webhookConfigured) {
+                sendIcon("arrow.up.forward")
+            }
+            if openSend == .webhook {
+                webhookForm
+                saveRow
+            }
+            sendRow(.copy, title: "Copy as Markdown", detail: model.settings.copyPrompt.isEmpty ? nil : model.settings.copyPrompt,
+                    isSetUp: !model.settings.copyPrompt.isEmpty) {
+                sendIcon("doc.on.clipboard")
+            }
+            if openSend == .copy { copyForm }
+        }
+    }
+
+    private func sendIcon(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.ofMuted)
+            .frame(width: 24, height: 24)
+            .background(Color.ofSettingsInset, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+
+    private func sendRow<Icon: View>(_ row: SendRow, title: String, detail: String?, isSetUp: Bool, @ViewBuilder icon: @escaping () -> Icon) -> some View {
+        IntegrationRow(title: title, detail: detail, icon: icon) {
+            Button(openSend == row ? "Close" : isSetUp ? "Edit\u{2026}" : "Set Up\u{2026}") {
+                if openSend == .copy { commitPrompt() }
+                openSend = openSend == row ? nil : row
+            }
+            .buttonStyle(SettingsSmallButtonStyle(quiet: openSend == row))
+            .accessibilityLabel(openSend == row ? "Close \(title)" : "Set up \(title)")
+        }
+    }
+
+    private var readwiseForm: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                Text("Access token from ")
+                Link("readwise.io/access_token", destination: Self.readwiseTokenURL)
+                    .foregroundStyle(.ofAccent)
+                Text(state.readwiseConfigured ? ". Paste a new one to replace it." : ".")
+            }
+            .font(OFFont.ui(compact ? 13.5 : 12))
+            .foregroundStyle(.ofMuted)
+            .lineLimit(2)
+
+            SecureField(
+                state.readwiseConfigured ? "Saved (\(state.readwiseTokenHint ?? "\u{2026}"))" : "Paste your access token",
+                text: $token
+            )
+            .focused($focus, equals: .token)
+            .settingsFieldChrome(focused: focus == .token)
+            .textContentType(.password)
+            .autocorrectionDisabled()
+            #if os(iOS)
+            .textInputAutocapitalization(.never)
+            #endif
+            .onSubmit { Task { await save() } }
+            .padding(.top, 6)
+            .accessibilityLabel("Readwise Reader access token")
+
+            if state.readwiseConfigured { actions(.readwise, testLabel: "Check token") }
+        }
+        .padding(.vertical, 12)
+    }
+
+    private var highlightsRow: some View {
+        SettingsRow(label: "Send highlights to Readwise", hint: "Highlights and notes you make on this device") {
+            Toggle("Send highlights to Readwise", isOn: Binding(
+                get: { model.settings.sendHighlightsToReadwise },
+                set: { model.settings.sendHighlightsToReadwise = $0 }))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(.ofOK)
+                #if os(macOS)
+                .controlSize(.small)
+                #endif
+        }
+    }
+
+    private var webhookForm: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Each sent item is POSTed as JSON: id, url, title, author, published_at, summary, source.")
                 .font(OFFont.ui(compact ? 13.5 : 12))
                 .foregroundStyle(.ofMuted)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
-                SecureField(
-                    state.readwiseConfigured ? "Saved (\(state.readwiseTokenHint ?? "…"))" : "Paste your access token",
-                    text: $token
-                )
-                .focused($focus, equals: .token)
-                .settingsFieldChrome(focused: focus == .token)
-                .textContentType(.password)
-                .autocorrectionDisabled()
-                #if os(iOS)
-                .textInputAutocapitalization(.never)
-                #endif
-                .onSubmit { Task { await save() } }
-                .padding(.top, 6)
-                .accessibilityLabel("Readwise Reader access token")
-
-                if state.readwiseConfigured { actions(.readwise, testLabel: "Check token") }
-            }
-            .padding(.vertical, 12)
-
-            if state.readwiseConfigured {
-                SettingsRow(label: "Send highlights to Readwise", hint: "Highlights and notes you make on this device") {
-                    Toggle("Send highlights to Readwise", isOn: Binding(
-                        get: { model.settings.sendHighlightsToReadwise },
-                        set: { model.settings.sendHighlightsToReadwise = $0 }))
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .tint(.ofOK)
-                        #if os(macOS)
-                        .controlSize(.small)
-                        #endif
+            TextField("https://example.com/hooks/opendispatch", text: Binding(
+                get: { webhook },
+                set: { value in
+                    // A result for the saved URL no longer describes what the field shows.
+                    if value != webhook { tests[.webhook] = nil }
+                    webhookDraft = value
                 }
-            }
+            ))
+            .focused($focus, equals: .webhook)
+            .settingsFieldChrome(focused: focus == .webhook)
+            .textContentType(.URL)
+            .autocorrectionDisabled()
+            #if os(iOS)
+            .keyboardType(.URL)
+            .textInputAutocapitalization(.never)
+            #endif
+            .onSubmit { Task { await save() } }
+            .padding(.top, 6)
+            .accessibilityLabel("Webhook URL")
+
+            if state.webhookConfigured { actions(.webhook, testLabel: "Send a test") }
         }
+        .padding(.vertical, 12)
     }
 
-    private var webhookSection: some View {
-        SettingsSection(title: "Webhook") {
-            status(state.webhookConfigured, state.webhookConfigured ? "On" : "Not set up")
-        } content: {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Each sent item is POSTed as JSON: id, url, title, author, published_at, summary, source.")
-                    .font(OFFont.ui(compact ? 13.5 : 12))
-                    .foregroundStyle(.ofMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                TextField("https://example.com/hooks/opendispatch", text: Binding(
-                    get: { webhook },
-                    set: { value in
-                        // A result for the saved URL no longer describes what the field shows.
-                        if value != webhook { tests[.webhook] = nil }
-                        webhookDraft = value
-                    }
-                ))
-                .focused($focus, equals: .webhook)
-                .settingsFieldChrome(focused: focus == .webhook)
-                .textContentType(.URL)
-                .autocorrectionDisabled()
-                #if os(iOS)
-                .keyboardType(.URL)
-                .textInputAutocapitalization(.never)
-                #endif
-                .onSubmit { Task { await save() } }
-                .padding(.top, 6)
-                .accessibilityLabel("Webhook URL")
-
-                if state.webhookConfigured { actions(.webhook, testLabel: "Send a test") }
-            }
-            .padding(.vertical, 12)
-        }
-    }
-
-    private var footer: some View {
+    private var saveRow: some View {
         HStack(spacing: 12) {
             if let error {
                 Text(error)
@@ -174,19 +289,21 @@ struct SettingsIntegrationsPane: View {
                     .foregroundStyle(.ofOK)
                     .transition(.opacity)
             }
-            Button(saving ? "Saving…" : "Save") { Task { await save() } }
+            Button(saving ? "Saving\u{2026}" : "Save") { Task { await save() } }
                 .buttonStyle(SettingsPrimaryButtonStyle())
                 .disabled(!dirty || saving)
                 .keyboardShortcut(.defaultAction)
         }
-        .padding(.top, -8)
-        .padding(.bottom, 22)
+        .padding(.vertical, 10)
         .animation(.easeOut(duration: 0.15), value: saved)
     }
 
-    private var copySection: some View {
-        SettingsSection(title: "Copy as Markdown",
-                        footer: "Added above the copied text, for when you always ask your AI the same thing.") {
+    private var copyForm: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Added above the copied text, for when you always ask your AI the same thing.")
+                .font(OFFont.ui(compact ? 13.5 : 12))
+                .foregroundStyle(.ofMuted)
+                .fixedSize(horizontal: false, vertical: true)
             TextField("Start copied text with", text: Binding(
                 get: { promptDraft ?? model.settings.copyPrompt },
                 set: { promptDraft = $0 }
@@ -194,50 +311,23 @@ struct SettingsIntegrationsPane: View {
             .focused($focus, equals: .copyPrompt)
             .settingsFieldChrome(focused: focus == .copyPrompt)
             .onSubmit { commitPrompt() }
-            .padding(.vertical, 12)
         }
-    }
-
-    private var accountsSection: some View {
-        SettingsSection(title: "Signed-in sites",
-                        footer: "OpenDispatch keeps its own sign-ins; it can\u{2019}t use your browser\u{2019}s. Posts and replies are read only when you search or open them; Instagram accounts you add are read at each refresh.") {
-            ForEach(WebAccount.allCases) { account in
-                let on = model.accounts.isSignedIn(account)
-                SettingsRow(label: account.name, hint: accountHint(account, signedIn: on)) {
-                    Button(on ? "Sign Out" : "Sign In\u{2026}") {
-                        if on { Task { await model.accounts.signOut(account) } } else { signingIn = .account(account) }
-                    }
-                    .buttonStyle(SettingsSmallButtonStyle(quiet: on))
-                }
-            }
-            SettingsRow(label: "Bring who you follow", hint: "Add accounts you follow on YouTube, Instagram, X, Reddit, Substack or Bluesky.") {
-                Button("Choose\u{2026}") {
-                    model.followImport.app = nil
-                    importingFollows = true
-                }
-                .buttonStyle(SettingsSmallButtonStyle(quiet: false))
-            }
-        }
-        .sheet(isPresented: $importingFollows) {
-            FollowImportView().environment(model)
-        }
+        .padding(.vertical, 12)
     }
 
     // MARK: Paywalls
 
-    @ViewBuilder private var paywallSection: some View {
-        SettingsSection(title: "Paywalled articles") {
-            SettingsRow(label: "Articles from sites you don\u{2019}t subscribe to",
-                        hint: "Sites you\u{2019}re signed in to always show in full.", stacked: compact) {
+    private var paywallSection: some View {
+        IntegrationsSection("Paywalled articles", info: "Sites you\u{2019}re signed in to always show in full, and the reader opens their articles as you. The list fills in as you read.") {
+            SettingsRow(label: "Sites you don\u{2019}t subscribe to", stacked: compact) {
                 SettingsSegmented(label: "Paywalled articles", selection: Bindable(model).settings.paywallTreatment,
                                   options: PaywallTreatment.allCases.map { ($0, $0.label) })
             }
-        }
-        SettingsSection(title: "Sites with a paywall",
-                        footer: "Found as you read, plus the ones you sign in to. Signing in lets the reader open their articles as you.") {
             ForEach(paywallSites, id: \.self) { site in
                 let on = model.accounts.signedInSites.contains(site)
-                SettingsRow(label: site, hint: siteHint(site, signedIn: on)) {
+                IntegrationRow(title: site, detail: siteHint(site, signedIn: on)) {
+                    SourceBadge(host: site, title: site, size: 24)
+                } trailing: {
                     Button(on ? "Sign Out" : "Sign In\u{2026}") {
                         if on { Task { await model.accounts.signOut(site: site) } } else { signingIn = .opening(site) }
                     }
@@ -309,26 +399,6 @@ struct SettingsIntegrationsPane: View {
         if !t.contains("://") { t = "https://" + t }
         let site = Paywalls.site(of: t)
         return site.contains(".") ? site : nil
-    }
-
-    private func accountHint(_ account: WebAccount, signedIn: Bool) -> String {
-        switch (account, signedIn) {
-        case (.x, true): "Signed in. Explore shows posts from X, and the reader their replies."
-        case (.x, false): "Sign in to see posts from X in Explore and their replies in the reader."
-        case (.reddit, true): "Signed in. Reddit is read as you."
-        case (.reddit, false): "Optional: Reddit posts and comments are read without an account."
-        case (.instagram, true): "Signed in. Accounts you add here are read as you at each refresh."
-        case (.instagram, false): "Optional: accounts you add here are read without an account. Sign in only if Instagram asks."
-        case (.youtube, true): "Signed in. Only used to list your subscriptions when you bring them in."
-        case (.youtube, false): "Optional: only used to list your subscriptions when you bring them in."
-        }
-    }
-
-    /// A send target's state, beside its section title.
-    private func status(_ on: Bool, _ text: String) -> some View {
-        Text(text)
-            .font(OFFont.ui(12))
-            .foregroundStyle(on ? Color.ofOK : Color.ofFaint)
     }
 
     private func actions(_ target: SendTarget, testLabel: String) -> some View {
@@ -414,5 +484,100 @@ struct SettingsIntegrationsPane: View {
         } catch {
             tests[target] = .error(HTTP.message(error))
         }
+    }
+}
+
+/// A section of the pane: a title with its info button, then the card.
+private struct IntegrationsSection<Content: View>: View {
+    let title: String
+    let info: String
+    @ViewBuilder var content: () -> Content
+
+    init(_ title: String, info: String, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.info = info
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            IntegrationsHeader(title: title, info: info)
+            SettingsCard(content: content)
+        }
+    }
+}
+
+/// A section title, with the explanation behind an info button when it has one.
+private struct IntegrationsHeader: View {
+    let title: String
+    var info: String?
+    @Environment(\.settingsCompact) private var compact
+    @State private var showingInfo = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(title)
+                .font(compact ? OFFont.ui(15, .medium) : OFFont.ui(13, .semibold))
+                .foregroundStyle(compact ? Color.ofMuted : Color.ofInk)
+                .accessibilityAddTraits(.isHeader)
+            if let info {
+                Button {
+                    showingInfo = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: compact ? 15 : 12.5))
+                        .foregroundStyle(.ofMuted)
+                        .frame(minWidth: compact ? 30 : 18, minHeight: compact ? 30 : 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("About \(title)")
+                .popover(isPresented: $showingInfo) {
+                    Text(info)
+                        .font(OFFont.ui(13))
+                        .foregroundStyle(.ofInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: 280, alignment: .leading)
+                        .padding(14)
+                        .presentationCompactAdaptation(.popover)
+                }
+            }
+        }
+        .frame(minHeight: compact ? 30 : 18)
+        .padding(.horizontal, compact ? 20 : 4)
+        .padding(.bottom, compact ? 4 : 7)
+    }
+}
+
+/// One line: an icon, a name, a short detail in muted text and the row's controls.
+private struct IntegrationRow<Icon: View, Trailing: View>: View {
+    let title: String
+    var detail: String?
+    var muted = false
+    @ViewBuilder var icon: () -> Icon
+    @ViewBuilder var trailing: () -> Trailing
+    @Environment(\.settingsCompact) private var compact
+
+    var body: some View {
+        HStack(spacing: 10) {
+            icon()
+            Text(title)
+                .font(OFFont.ui(compact ? 17 : 14))
+                .foregroundStyle(muted ? Color.ofMuted : Color.ofInk)
+                .lineLimit(1)
+                .layoutPriority(1)
+            if let detail {
+                Text(detail)
+                    .font(OFFont.ui(compact ? 13.5 : 12.5))
+                    .foregroundStyle(.ofMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer(minLength: 8)
+            HStack(spacing: 2) { trailing() }
+                .fixedSize()
+        }
+        .frame(minHeight: compact ? 54 : 44)
+        .settingsTopHairline()
     }
 }

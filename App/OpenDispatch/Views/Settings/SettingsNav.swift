@@ -40,7 +40,7 @@ extension SettingsTab {
         case .playback: "video youtube autoplay pop out floating picture in picture theater transcript blocked embed won't play nfl sponsorblock read aloud voice speed"
         case .notifications: "alerts new posts notify"
         case .shortcuts: "keyboard keys hotkeys commands rebind change customize"
-        case .integrations: "readwise webhook send markdown copy prompt sign in x reddit paywall subscribe"
+        case .integrations: "readwise webhook send markdown copy prompt sign in x reddit youtube instagram substack bluesky mastodon opml bring follow paywall subscribe"
         case .data: "icloud sync refresh cache database storage"
         case .about: "version updates automatically download install check credits"
         }

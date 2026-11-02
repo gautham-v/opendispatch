@@ -1227,8 +1227,8 @@ Matching got stricter and news coverage groups into stories. Migration `v9-topic
 
 ### Bring who you follow (Core + App) — 2026-11-02
 ```swift
-public enum FollowApp: String, CaseIterable, Identifiable, Sendable   // youtube, instagram, x, reddit, substack, bluesky
-    var name, host, account: WebAccount?, shortlistSize, handlePlaceholder, handleHint, listTitle
+public enum FollowApp: String, CaseIterable, Identifiable, Sendable   // youtube, instagram, x, reddit, substack, bluesky, mastodon
+    static boardApps; var name, host, account: WebAccount?, shortlistSize, handlePlaceholder, handleHint, purpose, listTitle
 public struct FollowedAccount   // result: SourceSearchResult, followers: Int?, isPrivate, isVerified
 public struct FollowRead        // accounts (the app's order), followedTotal: Int?
 public struct FollowList        // app, ranked, shortlistCount, total, totalIsKnown, leftOut, alsoOn; shortlist, rest
@@ -1238,7 +1238,7 @@ public protocol FollowReading: Sendable { func read(_ app: FollowApp, handle: St
 public struct DefaultFollowReader: FollowReading
 ```
 - `DiscussionWeb`: `xFollowing(maxAccounts:progress:)`, `instagramFollowing(maxAccounts:progress:)`, `youtubeSubscriptions(progress:)`. `WebAccount` gains `youtube` and `signOutDomains`. `XPages.following(inTimeline:)` is what `accounts(inTimeline:)` now reads through.
-- App: `FollowImportStore` (`model.followImport`: `phase(_:)`, `select(_:)`, `goAhead(_:)`, `signInClosed(_:)`, `submit(handle:for:)`, `toggle`, `expand`, `add(_:into:)`), `FollowImportView`, `FollowAppTiles` on `StartHereView`; `AppModel.beginFollowImport(_:)`, `isFollowImportPresented`.
+- App: `FollowImportStore` (`model.followImport`: `phase(_:)`, `select(_:)`, `goAhead(_:)`, `signInClosed(_:)`, `submit(handle:for:)`, `savedHandle(_:)`, `forget(_:)`, `toggle`, `expand`, `add(_:into:)`), `FollowImportView`, `FollowAppTiles` on `StartHereView`, `FollowTile` (also `SettingsIntegrationsPane`); `AppModel.beginFollowImport(_:)`, `isFollowImportPresented`.
 
 ### Discussions (Core + App) — 2026-10-29
 Explore searches posts, and the reader shows comments under a thread and under every YouTube video.
