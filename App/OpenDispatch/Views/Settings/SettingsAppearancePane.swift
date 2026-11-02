@@ -231,6 +231,12 @@ struct SettingsPlaybackPane: View {
                 SettingsRow(label: "Autoplay on select", hint: "Start playing when you open a video") {
                     toggle("Autoplay on select", isOn: $model.settings.autoplay)
                 }
+                #if os(macOS)
+                SettingsRow(label: "Pop out when switching apps",
+                            hint: "Keep a playing video on top of other apps while you\u{2019}re away, and back in the reader when you return") {
+                    toggle("Pop out when switching apps", isOn: $model.settings.popOutOnAppSwitch)
+                }
+                #endif
                 SettingsRow(label: "Theater layout", hint: "Full-width player above the title") {
                     toggle("Theater layout", isOn: $model.settings.theater)
                 }

@@ -1033,6 +1033,7 @@ enum ReaderContentState { loading, ok(html:leadImage:rendered:), failed }
 struct ReaderArticleWebView: View            // height-fitted WKWebView (html, hero, baseURL, ReaderHTML.Appearance)
 enum ReaderHTML { struct Appearance(font,size,theme,wide); static func document(...); stylesheet (reader.css) }
 struct ReaderYouTubePlayer: View             // 16:9 youtube-nocookie embed (videoID, title, autoplay)
+final class ReaderFloatingPlayer             // Mac: the pop-out window; takes the reader player's web view and coordinator without reloading (popOut, bringBack, close, toggle)
 struct ReaderVideoBody: View                 // theater / inline video layout, Linkified 3-line description
                                              // then ReaderVideoTabBar (Comments | Transcript, Comments first) and the tab's content; a copy of
                                              // the bar hangs under the pinned section header once the inline bar scrolls past it, and picking

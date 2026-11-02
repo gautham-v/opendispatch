@@ -4,6 +4,8 @@ import SwiftUI
 /// SF Symbols standing in for the stroke icons in src/components/icons.tsx (24-unit, 1.75 stroke).
 /// Prefer the outline (non-.fill) variants to keep the stroke look; no emoji anywhere.
 enum OFIcon: String, CaseIterable {
+    /// The floating player
+    case popOut = "pip"
     /// RefreshIcon
     case refresh = "arrow.clockwise"
     /// BookmarkIcon (outline) / filled when saved

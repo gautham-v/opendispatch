@@ -85,6 +85,14 @@ struct ReaderVideoBody: View {
     /// Where a video watched partway starts again.
     private var resumeAt: Double? { model.history.resumePosition(item) }
 
+    /// What the transcript follows and seeks: the floating player when this video is in it.
+    private var shownPlayback: ReaderYouTubeController {
+        #if os(macOS)
+        if let videoID = item.item.videoId, let floating = ReaderFloatingPlayer.shared.controller(forVideo: videoID) { return floating }
+        #endif
+        return playback
+    }
+
     /// History: how far it got, every few seconds while playing and once more on leaving.
     private func recordProgress(force: Bool = false) {
         model.history.recordProgress(item, position: playback.time, duration: playback.duration, force: force)
@@ -302,7 +310,7 @@ struct ReaderVideoBody: View {
                 .accessibilityHidden(shownTab != .comments)
         }
         if shownTab == .transcript, transcript != nil {
-            ReaderTranscriptParagraphs(paragraphs: paragraphs, long: (paragraphs.last?.start ?? 0) >= 3600, playback: playback)
+            ReaderTranscriptParagraphs(paragraphs: paragraphs, long: (paragraphs.last?.start ?? 0) >= 3600, playback: shownPlayback)
                 .padding(.top, 10)
         }
     }
@@ -321,7 +329,7 @@ struct ReaderVideoBody: View {
     }
 
     private func player(_ videoID: String, vertical: Bool = false) -> ReaderYouTubePlayer {
-        ReaderYouTubePlayer(videoID: videoID, title: item.item.title, autoplay: autoplay,
+        ReaderYouTubePlayer(item: item, videoID: videoID, title: item.item.title, autoplay: autoplay,
                             thumbnail: item.item.thumbnailUrl, durationSec: item.item.durationSec, vertical: vertical,
                             resumeAt: resumeAt, knownBlocked: model.opensOnYouTube(item), controller: playback,
                             onBlocked: { model.noteVideoBlocked(item) }, watchOnYouTube: { model.watchOnYouTube(item) })

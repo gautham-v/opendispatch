@@ -14,6 +14,7 @@ import AVFoundation
 /// other apps goes back to the thumbnail, with a note and a way to YouTube; one already known to (`knownBlocked`) starts
 /// there without trying the player.
 struct ReaderYouTubePlayer: View {
+    let item: FeedItem
     let videoID: String
     let title: String
     let autoplay: Bool
@@ -32,7 +33,7 @@ struct ReaderYouTubePlayer: View {
     let watchOnYouTube: () -> Void
 
     var body: some View {
-        ReaderYouTubeStage(videoID: videoID, title: title, autoplay: autoplay, thumbnail: thumbnail,
+        ReaderYouTubeStage(item: item, videoID: videoID, title: title, autoplay: autoplay, thumbnail: thumbnail,
                            durationSec: durationSec, vertical: vertical, resumeAt: resumeAt, knownBlocked: knownBlocked,
                            controller: controller, onBlocked: onBlocked, watchOnYouTube: watchOnYouTube)
             .aspectRatio(vertical ? 9 / 16 : 16 / 9, contentMode: .fit)
@@ -43,6 +44,7 @@ struct ReaderYouTubePlayer: View {
 }
 
 private struct ReaderYouTubeStage: View {
+    let item: FeedItem
     let videoID: String
     let title: String
     let thumbnail: String?
@@ -67,9 +69,10 @@ private struct ReaderYouTubeStage: View {
     @State private var fullscreen: ReaderYouTubeFullscreenStart?
     #endif
 
-    init(videoID: String, title: String, autoplay: Bool, thumbnail: String?, durationSec: Int?, vertical: Bool,
+    init(item: FeedItem, videoID: String, title: String, autoplay: Bool, thumbnail: String?, durationSec: Int?, vertical: Bool,
          resumeAt: Double?, knownBlocked: Bool, controller: ReaderYouTubeController, onBlocked: @escaping () -> Void,
          watchOnYouTube: @escaping () -> Void) {
+        self.item = item
         self.videoID = videoID
         self.title = title
         self.thumbnail = thumbnail
@@ -78,7 +81,16 @@ private struct ReaderYouTubeStage: View {
         self.controller = controller
         self.onBlocked = onBlocked
         self.watchOnYouTube = watchOnYouTube
-        _started = State(initialValue: autoplay && !knownBlocked)
+        #if os(macOS)
+        // Coming back from the floating player, this stage takes over its playing web view. While one floats, a video
+        // opened in the reader doesn't start over it by itself.
+        let returning = ReaderFloatingPlayer.shared.isReturning(videoID)
+        let autoStart = returning || (autoplay && !ReaderFloatingPlayer.shared.isActive)
+        _revealed = State(initialValue: returning)
+        #else
+        let autoStart = autoplay
+        #endif
+        _started = State(initialValue: autoStart && !knownBlocked)
         _blocked = State(initialValue: knownBlocked)
         _startTime = State(initialValue: resumeAt ?? 0)
     }
@@ -89,13 +101,41 @@ private struct ReaderYouTubeStage: View {
         return SponsorBlock.playerJSON(SponsorBlock.playerSegments(segments, mode: model.settings.sponsorBlockMode))
     }
 
+    /// This video is in the floating player, so the reader shows a note in its place.
+    private var floatingHere: Bool {
+        #if os(macOS)
+        ReaderFloatingPlayer.shared.videoID == videoID
+        #else
+        false
+        #endif
+    }
+
+    /// The floating player closing with this video mustn't start it here for the moment before `onChange` sees that.
+    private var mayPlay: Bool {
+        #if os(macOS)
+        started && !blocked && !floatingHere && ReaderFloatingPlayer.shared.closedVideoID != videoID
+        #else
+        started && !blocked
+        #endif
+    }
+
+    /// The tooltip on the bar's pop-out button, with its key.
+    private var popOutHelp: String {
+        guard let key = model.settings.shortcuts.binding(for: .popOutVideo).key else { return model.shortcutHelp("Pop out", .popOutVideo) }
+        return "Pop out (\(key.uppercased()))"
+    }
+
     var body: some View {
         ZStack {
-            if started && !blocked {
+            if mayPlay {
                 ReaderYouTubeRepresentable(videoID: videoID, title: title, start: Int(startTime), inCover: false,
-                                           segmentsJSON: segmentsJSON, controller: controller, onEvent: handle)
+                                           segmentsJSON: segmentsJSON, popOutHelp: popOutHelp, controller: controller, onEvent: handle)
             }
-            if !revealed || blocked {
+            if floatingHere {
+                #if os(macOS)
+                ReaderYouTubeFloatingNotice { ReaderFloatingPlayer.shared.bringBack() }
+                #endif
+            } else if !revealed || blocked {
                 ReaderYouTubePoster(videoID: videoID, title: title, thumbnail: thumbnail, durationSec: durationSec,
                                     vertical: vertical, loading: started && !blocked, blocked: blocked,
                                     watchOnYouTube: watchOnYouTube) { started = true }
@@ -103,13 +143,36 @@ private struct ReaderYouTubeStage: View {
             }
         }
         .onAppear {
+            #if os(macOS)
+            ReaderFloatingPlayer.shared.attach(model)
+            controller.popOut = { automatic in
+                ReaderFloatingPlayer.shared.popOut(item: item, vertical: vertical, controller: controller, automatic: automatic)
+            }
+            if !controller.isFloating { controller.time = 0 }
+            ReaderFloatingPlayer.shared.clearClosed(videoID)
+            #else
             controller.time = 0
+            #endif
             controller.start = { time in
                 startTime = time
                 started = true
             }
             ReaderYouTubeController.current = controller
         }
+        #if os(macOS)
+        .onChange(of: floatingHere) { _, floating in
+            guard !floating else { return }
+            if let closedAt = ReaderFloatingPlayer.shared.takeClosed(videoID) {
+                // Back to the poster, ready to play on from where it stopped.
+                started = false
+                revealed = false
+                startTime = closedAt
+            } else {
+                started = true
+                revealed = true
+            }
+        }
+        #endif
         .onDisappear {
             if ReaderYouTubeController.current === controller { ReaderYouTubeController.current = nil }
         }
@@ -140,7 +203,16 @@ private struct ReaderYouTubeStage: View {
 
     private func handle(_ event: ReaderYouTubeEvent) {
         switch event {
-        case .playing, .failed: reveal()
+        case .playing:
+            reveal()
+            #if os(macOS)
+            if controller.popOutWhenLoaded {
+                controller.popOutWhenLoaded = false
+                controller.popOut?(false)
+            }
+            #endif
+        case .failed:
+            reveal()
         case .blocked:
             blocked = true
             onBlocked()
@@ -155,6 +227,18 @@ private struct ReaderYouTubeStage: View {
         case .time(let time, let duration):
             if duration > 0 { controller.duration = duration }
             controller.time = time
+        case .state(let playing):
+            controller.isPlaying = playing
+            #if os(macOS)
+            if playing { ReaderFloatingPlayer.shared.pause(unlessShowing: videoID) }
+            #endif
+        case .popOut:
+            #if os(macOS)
+            controller.popOut?(false)
+            #else
+            break
+            #endif
+        case .popIn, .floatClose: break
         }
     }
 }
@@ -312,6 +396,10 @@ enum ReaderYouTubeEvent {
     case playing, failed, blocked, fullscreen(Double), exitFullscreen(Double)
     /// Seconds in, and the video's length once the player knows it (else 0).
     case time(Double, Double)
+    /// Started or stopped playing.
+    case state(Bool)
+    /// The bar's pop-out button, and the floating player's way back and close buttons.
+    case popOut, popIn, floatClose
 }
 
 /// Lets the stage reach the player's page (resume after the iPhone full-screen cover closes), the
@@ -332,6 +420,27 @@ final class ReaderYouTubeController {
     @ObservationIgnored var start: ((Double) -> Void)?
     /// The iPhone's full-screen player is up: the reader under it disappears but keeps its player.
     @ObservationIgnored var inFullscreen = false
+    /// Playing now, as the page last said.
+    @ObservationIgnored var isPlaying = false
+    #if os(macOS)
+    /// Its web view is in the floating player, so the reader leaving the video leaves it playing.
+    @ObservationIgnored var isFloating = false
+    @ObservationIgnored weak var coordinator: ReaderYouTubeCoordinator?
+    /// Pop out as soon as the player, asked to from the poster, has started.
+    @ObservationIgnored var popOutWhenLoaded = false
+    /// Moves this player to the floating player; true when switching apps did it.
+    @ObservationIgnored var popOut: ((Bool) -> Void)?
+    #endif
+
+    /// Who Space and ←/→ go to: the reader's player, or when it isn't loaded the floating one. With no video in the
+    /// reader they keep scrolling the article.
+    static var keyTarget: ReaderYouTubeController? {
+        guard let current else { return nil }
+        #if os(macOS)
+        if current.webView == nil, let floating = ReaderFloatingPlayer.shared.controller { return floating }
+        #endif
+        return current
+    }
 
     func togglePlayback() {
         if let webView {
@@ -355,9 +464,19 @@ final class ReaderYouTubeController {
         webView?.evaluateJavaScript("window.odPlayer && window.odPlayer.resume(\(time))")
     }
 
+    #if os(iOS)
+    /// Into Picture in Picture, or back out of it.
+    func togglePictureInPicture() {
+        webView?.evaluateJavaScript("window.odPlayer && window.odPlayer.pictureInPicture()")
+    }
+    #endif
+
     /// The reader left this video: blank the player. The lazy stack that pins the theater player doesn't
     /// always dismantle its web view, which then played on out of sight.
     func stop() {
+        #if os(macOS)
+        guard !isFloating else { return }
+        #endif
         guard !inFullscreen, let webView else { return }
         webView.loadHTMLString("", baseURL: nil)
         self.webView = nil
@@ -378,7 +497,7 @@ enum ReaderYouTube {
             + "&cc_load_policy=0&disablekb=1&fs=0&enablejsapi=1&origin=\(origin)\(from)"
     }
 
-    @MainActor static func page(videoID: String, title: String, start: Int, inCover: Bool) -> String {
+    @MainActor static func page(videoID: String, title: String, start: Int, inCover: Bool, popOutHelp: String?) -> String {
         let id = videoID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? videoID
         #if os(iOS)
         let nativeFullscreen = true
@@ -389,13 +508,19 @@ enum ReaderYouTube {
             src: ReaderWebSupport.escapeAttribute(embedURL(videoID: videoID, start: start)),
             title: ReaderWebSupport.escapeAttribute(title),
             poster: ReaderWebSupport.escapeAttribute("https://i.ytimg.com/vi/\(id)/hqdefault.jpg"),
-            nativeFullscreen: nativeFullscreen, inCover: inCover)
+            popOutHelp: popOutHelp.map(ReaderWebSupport.escapeAttribute), nativeFullscreen: nativeFullscreen, inCover: inCover)
     }
 }
 
 @MainActor
 final class ReaderYouTubeCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     var loadedKey: String?
+    /// The web view is in the floating player; the view that made it going away must leave it playing.
+    var handedOff = false
+    /// The web view coming back from the floating player, for the next view to take, already playing.
+    var returningWebView: WKWebView?
+    /// Keep the page that's loaded the next time `update` runs.
+    private var keepsPage = false
     /// The segment list last handed to the page, replayed when a load finishes: the first push can reach the
     /// page before it exists, and a reload starts with none.
     private var segmentsJSON: String?
@@ -439,7 +564,13 @@ final class ReaderYouTubeCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         case "fullscreen": onEvent(.fullscreen(time))
         case "exitFullscreen": onEvent(.exitFullscreen(time))
         case "time": onEvent(.time(time, (body["duration"] as? NSNumber)?.doubleValue ?? 0))
-        case "state": stateChanged(playing: body["playing"] as? Bool ?? false)
+        case "state":
+            let playing = body["playing"] as? Bool ?? false
+            stateChanged(playing: playing)
+            onEvent(.state(playing))
+        case "popOut": onEvent(.popOut)
+        case "popIn": onEvent(.popIn)
+        case "floatClose": onEvent(.floatClose)
         default: break
         }
     }
@@ -477,15 +608,23 @@ final class ReaderYouTubeCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         return webView
     }
 
-    func update(_ webView: WKWebView, videoID: String, title: String, start: Int, inCover: Bool) {
+    func keepPage() { keepsPage = true }
+
+    func update(_ webView: WKWebView, videoID: String, title: String, start: Int, inCover: Bool, popOutHelp: String?) {
         let key = "\(videoID)|\(start)|\(inCover)"
+        if keepsPage {
+            keepsPage = false
+            loadedKey = key
+            return
+        }
         guard key != loadedKey else { return }
         loadedKey = key
-        webView.loadHTMLString(ReaderYouTube.page(videoID: videoID, title: title, start: start, inCover: inCover),
+        webView.loadHTMLString(ReaderYouTube.page(videoID: videoID, title: title, start: start, inCover: inCover, popOutHelp: popOutHelp),
                                baseURL: ReaderYouTube.pageOrigin)
     }
 
     func dismantle(_ webView: WKWebView) {
+        guard !handedOff else { return }
         // Stop playback when the reader moves on.
         webView.loadHTMLString("", baseURL: nil)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: ReaderYouTubePage.handlerName)
@@ -501,23 +640,53 @@ private struct ReaderYouTubeRepresentable: NSViewRepresentable {
     let start: Int
     let inCover: Bool
     let segmentsJSON: String
+    let popOutHelp: String?
     let controller: ReaderYouTubeController?
     let onEvent: (ReaderYouTubeEvent) -> Void
 
-    func makeCoordinator() -> ReaderYouTubeCoordinator { ReaderYouTubeCoordinator() }
-    func makeNSView(context: Context) -> WKWebView {
-        let view = context.coordinator.makeWebView()
+    /// Coming back from the floating player, the coordinator that already runs its page.
+    func makeCoordinator() -> ReaderYouTubeCoordinator {
+        ReaderFloatingPlayer.shared.takeReturning(videoID: videoID, into: controller) ?? ReaderYouTubeCoordinator()
+    }
+    func makeNSView(context: Context) -> ReaderYouTubeHost {
+        let coordinator = context.coordinator
+        let view: WKWebView
+        if let returning = coordinator.returningWebView {
+            view = returning
+            coordinator.returningWebView = nil
+            coordinator.keepPage()
+        } else {
+            view = coordinator.makeWebView()
+        }
         controller?.webView = view
-        return view
+        controller?.coordinator = coordinator
+        return ReaderYouTubeHost(webView: view)
     }
-    func updateNSView(_ view: WKWebView, context: Context) {
+    func updateNSView(_ host: ReaderYouTubeHost, context: Context) {
+        guard !context.coordinator.handedOff else { return }
         context.coordinator.onEvent = onEvent
-        context.coordinator.update(view, videoID: videoID, title: title, start: start, inCover: inCover)
-        context.coordinator.setSegments(segmentsJSON, on: view)
+        context.coordinator.update(host.webView, videoID: videoID, title: title, start: start, inCover: inCover, popOutHelp: popOutHelp)
+        context.coordinator.setSegments(segmentsJSON, on: host.webView)
     }
-    static func dismantleNSView(_ view: WKWebView, coordinator: ReaderYouTubeCoordinator) {
-        coordinator.dismantle(view)
+    static func dismantleNSView(_ host: ReaderYouTubeHost, coordinator: ReaderYouTubeCoordinator) {
+        coordinator.dismantle(host.webView)
     }
+}
+
+/// Holds the player's web view in the reader, so the view can leave for the floating player and come back while it plays.
+final class ReaderYouTubeHost: NSView {
+    let webView: WKWebView
+
+    init(webView: WKWebView) {
+        self.webView = webView
+        super.init(frame: .zero)
+        webView.frame = bounds
+        webView.autoresizingMask = [.width, .height]
+        addSubview(webView)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
 #else
 private struct ReaderYouTubeRepresentable: UIViewRepresentable {
@@ -526,6 +695,7 @@ private struct ReaderYouTubeRepresentable: UIViewRepresentable {
     let start: Int
     let inCover: Bool
     let segmentsJSON: String
+    var popOutHelp: String? = nil
     let controller: ReaderYouTubeController?
     let onEvent: (ReaderYouTubeEvent) -> Void
 
@@ -537,7 +707,7 @@ private struct ReaderYouTubeRepresentable: UIViewRepresentable {
     }
     func updateUIView(_ view: WKWebView, context: Context) {
         context.coordinator.onEvent = onEvent
-        context.coordinator.update(view, videoID: videoID, title: title, start: start, inCover: inCover)
+        context.coordinator.update(view, videoID: videoID, title: title, start: start, inCover: inCover, popOutHelp: nil)
         context.coordinator.setSegments(segmentsJSON, on: view)
     }
     static func dismantleUIView(_ view: WKWebView, coordinator: ReaderYouTubeCoordinator) {

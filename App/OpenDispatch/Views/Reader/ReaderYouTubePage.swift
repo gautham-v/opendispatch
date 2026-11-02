@@ -12,6 +12,10 @@ import Foundation
 /// YouTube's app, and further taps on that side within 0.7 s keep skipping, the sum shown on that side.
 /// Keys: Space, ←/→ (5 s), F, M, C. Captions start off; the bar's CC button turns them on.
 ///
+/// The Mac's floating player (ReaderFloatingPlayer) runs this same page in another window: `setFloating` swaps the bar's
+/// pop-out and full-screen buttons for close and back along the top, and `setPointerInside` reports hovering, which
+/// WebKit doesn't see in a window that isn't key. iOS gets a Picture in Picture button (`tpip`) instead.
+///
 /// Full screen is the element Fullscreen API where WebKit has it (Mac, iPad). On iPhone it doesn't, so
 /// the page asks the app instead (`nativeFullscreen`): the app pauses here and opens a full-screen
 /// cover running this page with `inCover`, whose button closes it again.
@@ -63,9 +67,25 @@ enum ReaderYouTubePage {
         'html:not(.od-captions) .ytp-caption-window-container { display: none !important; }';
       (document.head || document.documentElement).appendChild(style);
       window.addEventListener('message', function (e) {
-        if (e.source === window.parent && e.data && typeof e.data.odCaptions === 'boolean')
+        if (e.source !== window.parent || !e.data) return;
+        if (typeof e.data.odCaptions === 'boolean')
           document.documentElement.classList.toggle('od-captions', e.data.odCaptions);
+        if (e.data.odPiPToggle) {
+          var v = document.querySelector('video');
+          if (v && v.webkitSetPresentationMode)
+            v.webkitSetPresentationMode(v.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture');
+        }
       });
+      // Tell the player's page when the video can go into Picture in Picture, which it can't until it has loaded.
+      if (window !== window.parent) {
+        var tries = 0, look = setInterval(function () {
+          var v = document.querySelector('video');
+          if (v && v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode('picture-in-picture')) {
+            clearInterval(look);
+            window.parent.postMessage({ odPiP: true }, '*');
+          } else if (++tries > 120) clearInterval(look);
+        }, 500);
+      }
     })();
     """#
 
@@ -74,6 +94,9 @@ enum ReaderYouTubePage {
     /// goforward.10 drawn by hand: an open circle with an arrowhead, the 10 inside (the forward one mirrored).
     private static let touchControls = #"""
     <div id="tui">
+      <button id="tpip" class="hit g" aria-label="Picture in Picture" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.4"/>
+        <rect x="11.5" y="11.5" width="7" height="5.5" rx="1" fill="currentColor" stroke="none"/></svg></button>
       <button id="tclose" class="hit g" aria-label="Exit full screen"><svg viewBox="0 0 24 24" fill="none"
         stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
       <button id="tcc" class="hit g" aria-label="Captions"><svg class="off-cc" viewBox="0 0 24 24" fill="none"
@@ -110,10 +133,30 @@ enum ReaderYouTubePage {
     </div>
     """#
 
-    /// `src`, `title` and `poster` must already be attribute-escaped.
-    static func html(src: String, title: String, poster: String, nativeFullscreen: Bool, inCover: Bool) -> String {
+    /// The Mac's floating player: close and way back with the title, over the top of the video.
+    private static let floatingTop = #"""
+    <div id="ftop" class="ctl">
+      <button id="fclose" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+      <button id="fback" aria-label="Back to the reader" title="Back to the reader"><svg viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18"
+        height="15" rx="2.4"/><path d="M15.5 8.5l-5.5 5.5M10 10v4h4"/></svg></button>
+      <span id="ftitle"></span>
+    </div>
+    """#
+
+    private static let popOutIcon = #"""
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect
+      x="3" y="4.5" width="18" height="15" rx="2.4"/><rect x="11.5" y="11.5" width="7" height="5.5" rx="1" fill="currentColor"
+      stroke="none"/></svg>
+    """#
+
+    /// `src`, `title`, `poster` and `popOutHelp` must already be attribute-escaped. `popOutHelp` is the pop-out
+    /// button's tooltip, on the Mac, whose floating player this page also runs in; nil has neither.
+    static func html(src: String, title: String, poster: String, popOutHelp: String?, nativeFullscreen: Bool, inCover: Bool) -> String {
         let chevrons = String(repeating: #"<svg viewBox="0 0 24 24" fill="white"><path d="M7 5.5v13L18 12z"/></svg>"#, count: 3)
         let stageClass = nativeFullscreen ? (inCover ? "touch cover" : "touch") : ""
+        let popOutButton = popOutHelp.map { "<button id=\"popout\" aria-label=\"Pop out\" title=\"\($0)\">\(popOutIcon)</button>" } ?? ""
         return #"""
         <!doctype html>
         <html><head><meta charset="utf-8">
@@ -152,6 +195,13 @@ enum ReaderYouTubePage {
           background:#fff;transform:scale(0);transition:transform .12s ease}
         #track:hover #knob,#track.drag #knob{transform:scale(1)}
         #speed{font-weight:650;min-width:2.3em}
+        /* The floating player (Mac): close and way back with the title along the top; pop out and full screen go. */
+        #ftop{display:none;position:absolute;left:0;right:0;top:0;align-items:center;gap:max(14px,calc(var(--i)*.9));
+          padding:12px 14px 22px;background:linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,0))}
+        #ftitle{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        #stage.floating #ftop{display:flex}
+        #stage.floating #popout,#stage.floating #fs{display:none}
+        #stage.floating #sbfull,#stage.floating #sbtop{top:46px}
         /* A plain tinted circle: a backdrop blur over YouTube's frame only half draws. */
         .round{position:absolute;left:50%;top:50%;width:var(--c);height:var(--c);margin:calc(var(--c)/-2) 0 0 calc(var(--c)/-2);
           padding:0;border-radius:50%;background:rgba(0,0,0,.5)}
@@ -201,7 +251,9 @@ enum ReaderYouTubePage {
           grid-auto-flow:row;align-content:center;gap:1px}
         #tspeed svg{width:calc(var(--cb)*.42);height:calc(var(--cb)*.42);justify-self:center}
         #tfs{right:var(--m);bottom:26px}
-        #stage:not(.cover) #tclose,#stage.cover #tfs{display:none}
+        #stage:not(.cover) #tclose,#stage.cover #tfs,#stage.cover #tpip{display:none}
+        #tpip{left:var(--m);top:var(--m)}
+        #stage.touch:not(.cover) #sbfull{left:calc(var(--m)*2 + var(--cb))}
         #tpill{position:absolute;left:var(--m);bottom:26px;height:calc(var(--ph)*.72);padding:0 12px;border-radius:99px;
           display:flex;align-items:center;font-weight:600;font-variant-numeric:tabular-nums}
         #tpill{background:rgba(40,40,40,.55);-webkit-backdrop-filter:blur(20px) saturate(1.5);backdrop-filter:blur(20px) saturate(1.5)}
@@ -316,12 +368,14 @@ enum ReaderYouTubePage {
               <rect x="2" y="4.5" width="20" height="15" rx="3" fill="currentColor"/><path d="M10.6 10.2a2.3 2.3 0 1 0 0 3.6M16.6
               10.2a2.3 2.3 0 1 0 0 3.6" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round"/></svg></button>
             <button id="speed" aria-label="Playback speed">1×</button>
+            \#(popOutButton)
             <button id="fs" aria-label="Full screen"><svg class="off-fs" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5V4h5.5M20 9.5V4h-5.5M4 14.5V20h5.5M20
               14.5V20h-5.5"/></svg><svg class="on-fs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 4v5.5H4M14.5 4v5.5H20M9.5 20v-5.5H4M14.5 20v-5.5H20"/>
               </svg></button>
           </div>
+          \#(popOutHelp != nil ? floatingTop : "")
           <div id="sbfull" class="ctl" hidden><i></i><span></span></div>
           \#(nativeFullscreen ? touchControls : "")
           <div id="sbtop">
@@ -340,6 +394,7 @@ enum ReaderYouTubePage {
           var player = null, ready = false, failed = false, state = -1, started = false;
           var active = false, overBar = false, dragging = false, dragT = 0, lastSeek = 0, hideTimer = 0, lastTouch = 0;
           var muted = false, ccOn = false, rate = 0, lastSecond = -1, pendingSeek = null;
+          var floating = false, pointerInside = false;
           var canFS = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
 
           function post(m) {
@@ -373,7 +428,7 @@ enum ReaderYouTubePage {
           }
           function update() {
             var ended = state === 0, paused = ready && !isPlaying() && !ended;
-            var show = !failed && (paused || active || overBar || dragging || stage.contains(document.activeElement) &&
+            var show = !failed && (paused || active || overBar || pointerInside || dragging || stage.contains(document.activeElement) &&
               document.activeElement !== document.body);
             stage.classList.toggle('playing', isPlaying());
             stage.classList.toggle('paused', paused);
@@ -441,6 +496,7 @@ enum ReaderYouTubePage {
             if (TOUCH) $('trate').textContent = RATES[rate] + '×';
           }
           function fullscreen() {
+            if (floating) { post({ type: 'popIn' }); return; }
             if (IN_COVER) { post({ type: 'exitFullscreen', time: now() }); return; }
             if (canFS) {
               if (isFS()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
@@ -705,6 +761,15 @@ enum ReaderYouTubePage {
           on('cc', toggleCaptions);
           on('speed', cycleSpeed);
           on('fs', fullscreen);
+          on('popout', function () { post({ type: 'popOut' }); });
+          on('fback', function () { post({ type: 'popIn' }); });
+          on('fclose', function () { post({ type: 'floatClose' }); });
+          if ($('ftitle')) $('ftitle').textContent = iframe.title;
+          on('tpip', pictureInPicture);
+          function pictureInPicture() { try { iframe.contentWindow.postMessage({ odPiPToggle: true }, '*'); } catch (e) {} }
+          window.addEventListener('message', function (e) {
+            if (TOUCH && e.source === iframe.contentWindow && e.data && e.data.odPiP) $('tpip').hidden = false;
+          });
           on('tplay', toggle);
           on('tback', function () { skip(-1); });
           on('tfwd', function () { skip(1); });
@@ -779,7 +844,19 @@ enum ReaderYouTubePage {
             toggle: function () { if (failed) return; toggle(); poke(); },
             seekBy: function (d) { if (failed) return; seekBy(d); poke(); },
             setSegments: setSegments,
-            fail: fail
+            fail: fail,
+            pause: function () { if (ready) player.pauseVideo(); },
+            pictureInPicture: pictureInPicture,
+            setFloating: function (on) {
+              floating = on;
+              stage.classList.toggle('floating', on);
+              if (!on) pointerInside = false;
+              poke();
+            },
+            setPointerInside: function (inside) {
+              pointerInside = inside;
+              if (inside) poke(); else hide();
+            }
           };
           if (window.odPendingSegments) { setSegments(window.odPendingSegments); window.odPendingSegments = null; }
           render();

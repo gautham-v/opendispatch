@@ -176,6 +176,8 @@ struct AppSettings: Codable, Equatable, Sendable {
     var fillWindow: Bool = false
     /// Start playing when you open a video.
     var autoplay: Bool = true
+    /// A playing video moves to the floating player when you switch to another app, and back when you return (Mac).
+    var popOutOnAppSwitch: Bool = false
     /// Full-width player above the title.
     var theater: Bool = true
     /// The captions under a video, following along as it plays.
@@ -243,6 +245,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         readerWidth = (try? c.decode(ReaderWidthSetting.self, forKey: .readerWidth)) ?? .medium
         fillWindow = (try? c.decode(Bool.self, forKey: .fillWindow)) ?? false
         autoplay = (try? c.decode(Bool.self, forKey: .autoplay)) ?? true
+        popOutOnAppSwitch = (try? c.decode(Bool.self, forKey: .popOutOnAppSwitch)) ?? false
         theater = (try? c.decode(Bool.self, forKey: .theater)) ?? true
         videoTranscript = (try? c.decode(Bool.self, forKey: .videoTranscript)) ?? true
         sponsorBlock = (try? c.decode(Bool.self, forKey: .sponsorBlock)) ?? true

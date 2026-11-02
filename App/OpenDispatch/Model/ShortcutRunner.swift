@@ -87,6 +87,12 @@ struct ShortcutRunner {
             if let item = model.selectedItem { model.copyMarkdown(item: item) }
         case .listen:
             if let item = model.selectedItem, item.source.kind != .youtube { speech.requestToggle() }
+        case .popOutVideo:
+            #if os(macOS)
+            ReaderFloatingPlayer.shared.toggle()
+            #else
+            ReaderYouTubeController.current?.togglePictureInPicture()
+            #endif
         case .viewAll: model.navigate(view: .all)
         case .viewArticles: model.navigate(view: .articles)
         case .viewPosts: model.navigate(view: .posts)

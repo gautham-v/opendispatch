@@ -155,6 +155,11 @@ struct OpenDispatchCommands: Commands {
                 .keyboardShortcut(model.keyboardShortcut(.sidebar))
             Button(model.focusMode ? "Exit Full-Screen Reader" : "Full-Screen Reader") { model.toggleFocusMode() }
                 .keyboardShortcut(model.keyboardShortcut(.fullScreen))
+            Button(ReaderFloatingPlayer.shared.isActive ? "Bring Video Back" : "Pop Out Video") {
+                ReaderFloatingPlayer.shared.toggle()
+            }
+            .keyboardShortcut(model.keyboardShortcut(.popOutVideo))
+            .disabled(!ReaderFloatingPlayer.shared.isActive && model.selectedItem?.item.videoId == nil)
             Divider()
             Button(model.isSplit ? "Close Split View" : "Split View") { model.toggleSplit() }
                 .keyboardShortcut(model.keyboardShortcut(.split))

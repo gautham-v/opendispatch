@@ -267,7 +267,7 @@ private final class FeedKeyMonitor {
 
         // Space plays or pauses the reader's video and ←/→ skip 5 s, wherever focus is (the player's own
         // page only sees keys while it has focus, and clicking the poster or autoplay doesn't give it focus).
-        if flags.isDisjoint(with: .shift), let player = ReaderYouTubeController.current {
+        if flags.isDisjoint(with: .shift), let player = ReaderYouTubeController.keyTarget {
             switch event.keyCode {
             case 49: player.togglePlayback(); return true
             case 123: player.seek(by: -5); return true

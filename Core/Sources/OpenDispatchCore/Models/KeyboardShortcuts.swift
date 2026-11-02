@@ -65,7 +65,7 @@ public enum ShortcutSlot: String, Sendable {
 
 /// Every action a shortcut can be given. Raw values are stored in the settings, so they stay put.
 public enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
-    case nextItem, previousItem, openOriginal, toggleSaved, toggleRead, markAllRead, reloadArticle, copyMarkdown, listen
+    case nextItem, previousItem, openOriginal, toggleSaved, toggleRead, markAllRead, reloadArticle, copyMarkdown, listen, popOutVideo
     case viewAll, viewArticles, viewPosts, viewVideo, viewPodcasts, viewSaved, viewHighlights, viewHistory
     case nextTab, previousTab, newTab, openLink, closeTab, reopenTab, pinTab, back, forward, split, moveTabLeft, moveTabRight
     case search, filterSources, refresh, addSource, sidebar, fullScreen, settings, showShortcuts
@@ -83,6 +83,7 @@ public enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case .reloadArticle: "Reload the article"
         case .copyMarkdown: "Copy the article as Markdown"
         case .listen: "Listen to the article, pause or resume"
+        case .popOutVideo: "Pop out the video, or bring it back"
         case .viewAll: "All"
         case .viewArticles: "Articles"
         case .viewPosts: "Posts"
@@ -125,6 +126,7 @@ public enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case .reloadArticle: ShortcutBinding(combo: KeyCombo("r", shift: true))
         case .copyMarkdown: ShortcutBinding(combo: KeyCombo("c", shift: true))
         case .listen: ShortcutBinding(combo: KeyCombo("l", shift: true))
+        case .popOutVideo: ShortcutBinding(key: "i")
         case .viewAll: ShortcutBinding(key: "a")
         case .viewVideo: ShortcutBinding(key: "v")
         case .viewPodcasts: ShortcutBinding(key: "p")
@@ -196,6 +198,7 @@ public struct ShortcutSection: Hashable, Sendable {
             .action(.markAllRead), .action(.reloadArticle), .action(.copyMarkdown), .action(.listen),
             .fixed(label: "Play or pause the video", keys: ["Space"], separator: nil),
             .fixed(label: "Skip the video back or ahead 5 seconds", keys: ["←", "→"], separator: "or"),
+            .action(.popOutVideo),
         ]),
         ShortcutSection(title: "Views", rows: [
             .action(.viewAll), .action(.viewArticles), .action(.viewPosts), .action(.viewVideo), .action(.viewPodcasts),
