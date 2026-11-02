@@ -180,6 +180,11 @@ extension AppDatabase {
         try await reader.read { db in try Queries.lastRefreshAt(db) }
     }
 
+    /// The newest item's id.
+    public func newestItemID() async throws -> Int64? {
+        try await reader.read { db in try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM items") }
+    }
+
     /// The newest item's id, now and whenever an item is stored, by anything in this process. Keeps only the latest value for a
     /// consumer that's busy.
     public func observeNewestItemID() -> AsyncValueObservation<Int64?> {

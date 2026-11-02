@@ -25,9 +25,9 @@ import AppKit
 ///   item, the other pane's item gets a lighter highlight, and rows open in a background tab show a dot.
 /// - Scrolls to the top when the view/source/folder/search changes, and keeps the highlighted row
 ///   visible when it moves (keyboard).
-/// - Rows a refresh adds above the ones on screen don't push them down: what's on screen stays put and a pill over
-///   the top of the list says "↑ 4 new" (`NewRowsPill`), counting down as they scroll into view; clicking it scrolls
-///   to the top. Pull to refresh on iPhone shows them at the top instead.
+/// - Rows a refresh adds go on top of the list (`NewRowsOnTop`) and don't push the ones on screen down: what's on screen
+///   stays put and a pill over the top of the list says "↑ 4 new" (`NewRowsPill`), counting down as they scroll into
+///   view; clicking it scrolls to the top. Pull to refresh on iPhone shows them at the top instead.
 /// - Keyboard shortcuts (KeyboardShortcuts.swift) are attached here.
 struct ItemListView: View {
     @Environment(AppModel.self) private var model

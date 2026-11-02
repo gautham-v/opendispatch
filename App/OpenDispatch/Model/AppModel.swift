@@ -294,6 +294,7 @@ final class AppModel {
     /// Rows the last reload of the same list added (a refresh), for the list's new-items pill. Empty after a load
     /// of another list, or the first load of one.
     private(set) var arrivedItemIDs: Set<Int64> = []
+    @ObservationIgnored private var newRowsOnTop = NewRowsOnTop()
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
     /// Set when the list failed to load ("Could not load items. Retry").
@@ -726,17 +727,23 @@ final class AppModel {
         if keepingDepth { request.limit = min(max(ItemQuery.defaultLimit, loadedItems.count + ItemQuery.defaultLimit), 200) }
         isLoading = true
         do {
+            let newestID = try await database.newestItemID()
             let page = try await database.items(request)
             if query.order == .forYou { readingProfile = (try? await database.readingProfile()) ?? readingProfile }
             let hiddenVideos = query.hidesBlockedVideos ? (try? await database.hiddenBlockedVideoCount(query)) ?? 0 : 0
             guard gen == loadGeneration else { return }
             if hiddenVideos != hiddenBlockedVideoCount { hiddenBlockedVideoCount = hiddenVideos }
-            let before = Set(loadedItems.map(\.id))
+            var rows = page.items
+            var arrived: Set<Int64> = []
             // While the board is up the list is filling for the first time, so new rows just land at the top.
-            let arrived = countsNewRows && !isStartHereUp && cursorQuery?.listIdentity == query.listIdentity && !before.isEmpty
-                ? Set(page.items.map(\.id)).subtracting(before) : []
+            if countsNewRows, !isStartHereUp, cursorQuery?.listIdentity == query.listIdentity, !loadedItems.isEmpty {
+                (rows, arrived) = newRowsOnTop.arrange(page: page.items, previous: loadedItems.map(\.id), newestID: newestID, id: \.id)
+                if !arrived.isEmpty { holdDefaultReaderItems() }
+            } else {
+                newRowsOnTop.reset(newestID: newestID)
+            }
             if arrived != arrivedItemIDs { arrivedItemIDs = arrived }
-            loadedItems = page.items
+            loadedItems = rows
             applyPaywallFilter()
             nextCursor = page.nextCursor
             cursorQuery = query
@@ -745,6 +752,16 @@ final class AppModel {
             if gen == loadGeneration { loadError = HTTP.message(error) }
         }
         if gen == loadGeneration { isLoading = false }
+    }
+
+    /// New rows are about to take the top of the list: a reader showing its first row, with nothing opened, stays on that item.
+    private func holdDefaultReaderItems() {
+        for p in panes.indices {
+            let tab = panes[p].activeTab
+            guard tab.itemID == nil, let shown = item(for: tab) else { continue }
+            openItems[shown.id] = shown
+            panes[p].tabs[panes[p].active].itemID = shown.id
+        }
     }
 
     /// Next page (infinite scroll). No-op without a cursor, while loading, or when the cursor is stale.
@@ -1143,7 +1160,10 @@ final class AppModel {
 
     /// Live refresh progress: "updated just now" as soon as a refresh starts.
     private func handleRefreshProgress(_ event: RefreshProgress) {
-        if case .started(let at, _) = event { lastRefreshAt = at }
+        if case .started(let at, _) = event {
+            lastRefreshAt = at
+            newRowsOnTop.refreshStarted()
+        }
     }
 
     /// Deep links: `opendispatch://add?url=<feed or site>` opens Add source prefilled with that URL;
