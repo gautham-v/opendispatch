@@ -127,7 +127,7 @@ public struct DefaultExploreSearch: ExploreSearching {
             published: text(r["publishedTimeText"]), duration: duration, thumbnailUrl: "https://i.ytimg.com/vi/\(id)/mqdefault.jpg")
     }
 
-    /// A channel result as a source to follow. The two count fields have come in both orders (the `@handle` in
+    /// A channel result as a source to add. The two count fields have come in both orders (the `@handle` in
     /// `subscriberCountText` and the subscribers in `videoCountText`, and the other way round), and with the
     /// words localized, so the handle is told by its `@` and the count by naming subscribers or by elimination.
     static func channel(_ r: [String: Any]) -> SourceSearchResult? {

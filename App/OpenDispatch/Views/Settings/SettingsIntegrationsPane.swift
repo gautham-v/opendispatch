@@ -198,7 +198,7 @@ struct SettingsIntegrationsPane: View {
 
     private var accountsSection: some View {
         SettingsSection(title: "Signed-in sites",
-                        footer: "OpenDispatch keeps its own sign-ins; it can\u{2019}t use your browser\u{2019}s. Posts and replies are read only when you search or open them; Instagram accounts you follow are read at each refresh.") {
+                        footer: "OpenDispatch keeps its own sign-ins; it can\u{2019}t use your browser\u{2019}s. Posts and replies are read only when you search or open them; Instagram accounts you add are read at each refresh.") {
             ForEach(WebAccount.allCases) { account in
                 let on = model.accounts.isSignedIn(account)
                 SettingsRow(label: account.name, hint: accountHint(account, signedIn: on)) {
@@ -305,8 +305,8 @@ struct SettingsIntegrationsPane: View {
         case (.x, false): "Sign in to see posts from X in Explore and their replies in the reader."
         case (.reddit, true): "Signed in. Reddit is read as you."
         case (.reddit, false): "Optional: Reddit posts and comments are read without an account."
-        case (.instagram, true): "Signed in. Accounts you follow here are read as you at each refresh."
-        case (.instagram, false): "Optional: accounts you follow here are read without an account. Sign in only if Instagram asks."
+        case (.instagram, true): "Signed in. Accounts you add here are read as you at each refresh."
+        case (.instagram, false): "Optional: accounts you add here are read without an account. Sign in only if Instagram asks."
         }
     }
 

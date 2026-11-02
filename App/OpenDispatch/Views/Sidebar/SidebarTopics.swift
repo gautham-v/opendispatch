@@ -5,7 +5,7 @@ import SwiftUI
 /// with a + (New Topic…) and a row per topic with its keyword, like a source row. A row's context menu (and
 /// the "…" on hover) edits it, turns Notify on New Matches on or off, marks it read and removes it. Rows drag to
 /// reorder the topics (a row takes the topic before it, the strip under the last row puts it last).
-/// Shows only when there is at least one topic; the first is made from the Feed menu or Explore's Follow.
+/// Shows only when there is at least one topic; the first is made from the Feed menu or Explore's Add topic.
 struct SidebarTopicsSection: View {
     @Environment(AppModel.self) private var model
     @State private var pendingDelete: Source?

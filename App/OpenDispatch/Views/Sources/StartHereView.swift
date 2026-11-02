@@ -74,7 +74,7 @@ struct StartHereView: View {
         VStack(alignment: .leading, spacing: 0) {
             link("Import from another reader\u{2026}") { importing = true }
                 .opmlImporter(isPresented: $importing)
-            link("Follow a topic\u{2026}") { model.beginNewTopic() }
+            link("Add a topic\u{2026}") { model.beginNewTopic() }
         }
     }
 

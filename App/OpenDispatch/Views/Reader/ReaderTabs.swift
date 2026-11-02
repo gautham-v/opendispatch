@@ -37,7 +37,7 @@ struct ReaderPaneView: View {
     }
 }
 
-/// A new tab (+ or ⌘T) is Explore: a field that searches videos, podcast episodes and sources to follow, or
+/// A new tab (+ or ⌘T) is Explore: a field that searches videos, podcast episodes and sources to add, or
 /// opens any link (⌘L). With nothing searched it lists recent searches, what was read last (History) and
 /// the latest saved items; with a query, the results (the column widens). Opening anything, from here or
 /// the list, fills this tab. The last results stay, so the next new tab shows them again.

@@ -17,7 +17,7 @@ enum TopicEditorRequest: Identifiable {
 
 /// The topics, kept current by observing the database (so a topic another device
 /// made or edited shows up too). AppModel owns it (`model.topicStore`); the sidebar, the topic list's
-/// header and Explore's Follow button read it. A topic is a source row, so the list of items, refresh and
+/// header and Explore's Add topic button read it. A topic is a source row, so the list of items, refresh and
 /// notifications go through the same AppModel paths as any source; this holds only what the sources
 /// list (which leaves topics out) can't give.
 @MainActor
@@ -98,7 +98,7 @@ final class TopicStore {
 
     func topic(id: Int64) -> Source? { topics.first { $0.id == id } }
 
-    /// The topic whose keyword is `text`, ignoring case, diacritics and extra spaces (Explore's Following state).
+    /// The topic whose keyword is `text`, ignoring case, diacritics and extra spaces (Explore's Added state).
     func topic(matching text: String) -> Source? {
         let wanted = Self.key(text)
         guard !wanted.isEmpty else { return nil }

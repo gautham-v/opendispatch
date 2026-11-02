@@ -194,10 +194,10 @@ struct SourceSearchTests {
 
     @Test func detectorSaysWhenAPlaceHasNoFeed() async {
         let detector = DefaultFeedDetector(parser: DefaultFeedParser(), scraper: DefaultPageScraper(), fetch: { _, _ in throw HTTPError.timedOut })
-        await #expect(throws: FeedDetectionError("TikTok has no public feed, so its posts can't be followed here.")) {
+        await #expect(throws: FeedDetectionError("TikTok has no public feed, so it can't be added here.")) {
             _ = try await detector.detect("https://www.tiktok.com/@natgeo")
         }
-        await #expect(throws: FeedDetectionError("To follow someone on Instagram, paste the link to their profile.")) {
+        await #expect(throws: FeedDetectionError("To add someone on Instagram, paste the link to their profile.")) {
             _ = try await detector.detect("https://www.instagram.com/p/abc/")
         }
     }

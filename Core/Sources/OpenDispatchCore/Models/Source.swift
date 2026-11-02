@@ -72,7 +72,7 @@ public struct Source: Sendable, Hashable, Identifiable {
         return name.isEmpty ? title : name
     }
 
-    /// A followed keyword search (`Topic`). Tells by the reserved feed URL, not `kind`: in a list row `kind`
+    /// A saved keyword search (`Topic`). Tells by the reserved feed URL, not `kind`: in a list row `kind`
     /// is rewritten per item (`shown(for:)`).
     public var isTopic: Bool { Topic.isTopicFeedURL(feedUrl) }
     /// The keyword of a topic, as typed.

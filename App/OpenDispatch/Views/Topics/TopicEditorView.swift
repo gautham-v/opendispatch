@@ -237,7 +237,7 @@ struct TopicEditorView: View {
             }
             .pickerStyle(.segmented)
         } footer: {
-            Text("Notable: HN 100+, Reddit 200+, X 1,000+ likes, Bluesky 100+, or from a source you follow.")
+            Text("Notable: HN 100+, Reddit 200+, X 1,000+ likes, Bluesky 100+, or from one of your sources.")
         }
         Section("Search in") {
             Toggle("News sites", isOn: $news)

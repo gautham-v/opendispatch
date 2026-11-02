@@ -245,7 +245,7 @@ public final class AppDatabase: Sendable {
                 CREATE INDEX history_opened_idx ON history(opened_at DESC);
                 """)
         }
-        // Topics: followed keyword searches, stored as sources of kind 'topic' with their options as JSON. SQLite can't change
+        // Topics: saved keyword searches, stored as sources of kind 'topic' with their options as JSON. SQLite can't change
         // a CHECK constraint, so the table is rebuilt (the documented recipe; GRDB runs it with foreign keys off, so the items'
         // ON DELETE CASCADE doesn't fire for the dropped table). The AUTOINCREMENT counter is carried over so ids aren't reused.
         m.registerMigration("v8-topics") { db in

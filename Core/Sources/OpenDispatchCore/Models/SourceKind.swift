@@ -4,7 +4,7 @@ import GRDB
 /// How a source is fetched. Mirrors `source_kind` in src/db/schema.ts.
 /// - rss: an RSS/Atom feed. - youtube: a channel's videos.xml feed.
 /// - page: a listing page with no feed, scraped for article links. - podcast: an RSS feed of audio episodes.
-/// - topic: a followed keyword search (`Topic`), whose items are a mix of articles, discussions, videos and
+/// - topic: a saved keyword search (`Topic`), whose items are a mix of articles, discussions, videos and
 ///   episodes from places outside the subscriptions. How one of its items reads or plays is decided per item
 ///   (`Source.shown(for:)` rewrites the kind of a list row), never from this value.
 public enum SourceKind: String, Codable, Sendable, CaseIterable, Hashable, DatabaseValueConvertible {

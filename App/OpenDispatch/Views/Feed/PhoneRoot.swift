@@ -636,7 +636,7 @@ private enum DrawerPrompt: Identifiable {
 
 /// The drawer: the OpenDispatch wordmark with a glass search bubble; the sidebar's views in its order (All,
 /// Articles, Posts, Video, Podcasts, Saved, Highlights, less the ones hidden in Settings); Topics, one row per
-/// followed keyword with its unread count and a + for a new one; Folders, each
+/// saved keyword with its unread count and a + for a new one; Folders, each
 /// with its source count and a chevron that opens its sources inline, then No Folder if any source is
 /// without a folder; Settings as a glass bubble and Add source as a dark pill floating over the list. The
 /// row for what the list shows gets the soft pill; picking a view, folder or source closes the drawer.
@@ -844,14 +844,14 @@ private struct PhoneDrawer: View {
     // MARK: Topics
 
     /// The Topics group between the views and the folders. It shows with no topic too: the + here and
-    /// Explore's Follow are how the first one is made on the iPhone.
+    /// Explore's Add topic are how the first one is made on the iPhone.
     @ViewBuilder private var topicsSection: some View {
         DrawerSectionLabel("Topics") {
             if model.topics.count > 1 { editButton }
             plusButton("New Topic") { pick { model.beginNewTopic() } }
         }
         if model.topics.isEmpty {
-            Text("Follow a keyword to collect new matches from news, forums, videos and podcasts.")
+            Text("Add a keyword to collect new matches from news, forums, videos and podcasts.")
                 .font(OFFont.ui(14))
                 .foregroundStyle(.ofMuted)
                 .fixedSize(horizontal: false, vertical: true)

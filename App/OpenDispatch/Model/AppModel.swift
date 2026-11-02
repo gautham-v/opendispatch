@@ -150,7 +150,7 @@ final class AppModel {
     let history: HistoryStore
     /// Explore: the last search and its results, shared by the New Tab pages and the iPhone's Explore page.
     let explore: ExploreStore
-    /// Topics (followed keyword searches) and their unread counts.
+    /// Topics (saved keyword searches) and their unread counts.
     let topicStore: TopicStore
     /// The sites signed in to in the app (X, Reddit), for Explore's posts and the reader's replies.
     let accounts: WebAccountStore
@@ -1672,7 +1672,7 @@ final class AppModel {
         if let found = try? await database.sourceSuggestions(), found != sourceSuggestions { sourceSuggestions = found }
     }
 
-    /// What to show of them: not what's in the library (unless added just now, which stays to say Following) or on a site
+    /// What to show of them: not what's in the library (unless added just now, which stays to say Added) or on a site
     /// learned to be walled.
     var shownSuggestions: [SourceSuggestion] {
         sourceSuggestions.filter { suggestion in
@@ -1956,12 +1956,12 @@ final class AppModel {
         return topic
     }
 
-    /// Explore's Follow: a topic for the query with the default options, left unselected.
-    func followTopic(query: String) async throws {
+    /// Explore's Add topic: a topic for the query with the default options, left unselected.
+    func addTopic(query: String) async throws {
         try await createTopic(TopicOptions(keyword: query), select: false)
     }
 
-    /// The topic whose keyword is this Explore query, if followed.
+    /// The topic whose keyword is this Explore query, if added.
     func topic(matching query: String) -> Source? { topicStore.topic(matching: query) }
 
     /// Saves the sheet's edit. A changed keyword or place searches again (the old matches that no longer

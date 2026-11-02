@@ -5,7 +5,7 @@ import SwiftUI
 /// Explore on the iPhone, the drawer's first row: a page in the home column with the drawer's hamburger and
 /// a search field at the top. With nothing searched it lists recent searches and what was played last
 /// (History). A search (Return) shows filter chips (All, Videos, Articles, Posts, Episodes, Sources) over the results, which
-/// start with a row that follows the search as a topic (Follow, then Following, which opens the topic): in All,
+/// start with a row that adds the search as a topic (Add, then Added, which opens the topic): in All,
 /// videos in a row to swipe through, then three articles, three posts (with their places to pick from), three episodes and three
 /// sources, each with See All; a chip shows
 /// one kind in full. A last row searches the web in the default browser. Typing a web address instead of
@@ -247,7 +247,7 @@ struct ExplorePhoneView: View {
 
     @ViewBuilder private var results: some View {
         let explore = model.explore
-        followRow(explore.query)
+        addTopicRow(explore.query)
         switch filter {
         case .all: allSections(explore)
         case .videos: videoSection(explore, all: true)
@@ -261,8 +261,8 @@ struct ExplorePhoneView: View {
             .padding(.top, 18)
     }
 
-    /// Follow / Following for the searched words as a topic, above the results.
-    private func followRow(_ query: String) -> some View {
+    /// Add / Added for the searched words as a topic, above the results.
+    private func addTopicRow(_ query: String) -> some View {
         HStack(spacing: 12) {
             OFIcon.topic.image
                 .font(.system(size: 14))
@@ -271,7 +271,7 @@ struct ExplorePhoneView: View {
                 .background(Color.ofCardInset, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
-                Text(model.topic(matching: query) == nil ? "Follow as a topic" : "Following as a topic")
+                Text(model.topic(matching: query) == nil ? "Add as a topic" : "Added as a topic")
                     .font(OFFont.ui(15, .medium))
                     .foregroundStyle(.ofInk)
                     .lineLimit(1)
@@ -281,7 +281,7 @@ struct ExplorePhoneView: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 8)
-            ExploreTopicButton(query: query)
+            ExploreTopicButton(query: query, label: "Add")
         }
         .padding(.horizontal, Self.side)
         .padding(.top, 10)
@@ -417,10 +417,10 @@ struct ExplorePhoneView: View {
         case .idle:
             EmptyView()
         case .loading:
-            header("Sources to follow")
+            header("Sources")
             ExploreSkeleton(style: .rows, isPhone: true).padding(.horizontal, Self.side)
         case .failed(let message):
-            header("Sources to follow")
+            header("Sources")
             ExploreFailure(what: "sources", message: message, retry: explore.retryFeeds).padding(.horizontal, Self.side)
         case .loaded(let found):
             if found.isEmpty {
@@ -429,7 +429,7 @@ struct ExplorePhoneView: View {
                         .padding(.horizontal, Self.side).padding(.top, 14)
                 }
             } else {
-                if !all { header("Sources to follow", seeAll: found.count > 3 ? .sources : nil) }
+                if !all { header("Sources", seeAll: found.count > 3 ? .sources : nil) }
                 ForEach(all ? found : Array(found.prefix(3))) { result in
                     ExploreSourceItem(result: result, avatarSize: 40)
                         .padding(.horizontal, Self.side)

@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// Topics (followed keyword searches) and unread counts. A topic is a row of `sources` with kind `topic`, so
+/// Topics (saved keyword searches) and unread counts. A topic is a row of `sources` with kind `topic`, so
 /// refresh, notifications, Mark All as Read, Saved, History and retention treat it like any source; the
 /// functions here are what differs.
 extension Queries {
@@ -26,7 +26,7 @@ extension Queries {
             .fetchAll(db)
     }
 
-    /// The topic whose keyword is `keyword` (ignoring case, diacritics and extra spaces), for Explore's Follow / Following.
+    /// The topic whose keyword is `keyword` (ignoring case, diacritics and extra spaces), for Explore's Add topic / Added.
     public static func topic(_ db: Database, keyword: String) throws -> Source? {
         let wanted = TopicMatcher.fold(keyword.split(whereSeparator: \.isWhitespace).joined(separator: " "))
         guard !wanted.isEmpty else { return nil }

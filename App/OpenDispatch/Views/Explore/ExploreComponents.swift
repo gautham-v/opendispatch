@@ -127,8 +127,8 @@ struct ExplorePlayBadge: View {
     }
 }
 
-/// A source to follow: its picture (a channel's avatar round, a podcast's artwork rounded, a site's favicon),
-/// name, what it is, and Follow. A failed add shows its reason underneath.
+/// A source to add: its picture (a channel's avatar round, a podcast's artwork rounded, a site's favicon),
+/// name, what it is, and Add. A failed add shows its reason underneath.
 struct ExploreSourceItem: View {
     let result: SourceSearchResult
     var avatarSize: CGFloat = 36
@@ -151,7 +151,7 @@ struct ExploreSourceItem: View {
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                ExploreFollowButton(result: result)
+                ExploreAddSourceButton(result: result)
             }
             if case .failed(let message) = model.sourceAdds[result.feedUrl] {
                 Text(message)
@@ -208,15 +208,15 @@ struct ExploreSuggestedSources<Header: View>: View {
     }
 }
 
-/// Follow / Following, through the Add Source flow (`AppModel.beginAddSource`): a spinner while it adds, Try Again
-/// when it failed, Following once the source is in the library.
-struct ExploreFollowButton: View {
+/// Add / Added, through the Add Source flow (`AppModel.beginAddSource`): a spinner while it adds, Try Again
+/// when it failed, Added once the source is in the library.
+struct ExploreAddSourceButton: View {
     let result: SourceSearchResult
     @Environment(AppModel.self) private var model
 
     var body: some View {
         let state = model.sourceAdds[result.feedUrl]
-        let following = model.hasSource(feedUrl: result.feedUrl) || state == .added
+        let added = model.hasSource(feedUrl: result.feedUrl) || state == .added
         let adding = state == .adding
         var failed = false
         if case .failed = state { failed = true }
@@ -227,71 +227,73 @@ struct ExploreFollowButton: View {
                 if adding {
                     ProgressView().controlSize(.mini)
                 } else {
-                    (following ? OFIcon.check : OFIcon.plus).image.font(.system(size: 10, weight: .bold))
+                    (added ? OFIcon.check : OFIcon.plus).image.font(.system(size: 10, weight: .bold))
                 }
-                Text(following ? "Following" : adding ? "Adding" : failed ? "Try Again" : "Follow")
+                Text(added ? "Added" : adding ? "Adding" : failed ? "Try Again" : "Add")
                     .font(OFFont.ui(13, .semibold))
             }
-            .foregroundStyle(following || adding ? Color.ofInk : Color.white)
+            .foregroundStyle(added || adding ? Color.ofInk : Color.white)
             .padding(.horizontal, 11)
             .frame(height: 30)
-            .background(following || adding ? Color.ofCode : Color.ofAccent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(added || adding ? Color.ofCode : Color.ofAccent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(Rectangle())
             .fixedSize()
         }
         .buttonStyle(.plain)
-        .disabled(following || adding)
-        .accessibilityLabel(following ? "Following \(result.title)" : adding ? "Following \(result.title), in progress" : "Follow \(result.title)")
+        .disabled(added || adding)
+        .accessibilityLabel(added ? "\(result.title), added" : adding ? "Adding \(result.title)" : "Add \(result.title)")
     }
 }
 
-/// Follow / Following for the searched words as a topic: Follow stores a topic with the default options (it
-/// doesn't open it); once it exists the button reads Following and opens it. A spinner while it is stored, and
+/// Add topic / Added for the searched words as a topic: adding stores a topic with the default options (it
+/// doesn't open it); once it exists the button reads Added and opens it. A spinner while it is stored, and
 /// Try Again if that failed.
 struct ExploreTopicButton: View {
     let query: String
+    /// What it reads until the topic exists. The iPhone's row already says what it adds.
+    var label = "Add topic"
     @Environment(AppModel.self) private var model
     @State private var adding = false
     @State private var failed = false
 
     var body: some View {
         let topic = model.topic(matching: query)
-        let following = topic != nil
+        let added = topic != nil
         return Button {
             if let topic {
                 model.navigate(sourceID: topic.id)
             } else {
-                follow()
+                add()
             }
         } label: {
             HStack(spacing: 4) {
                 if adding {
                     ProgressView().controlSize(.mini)
                 } else {
-                    (following ? OFIcon.check : OFIcon.plus).image.font(.system(size: 10, weight: .bold))
+                    (added ? OFIcon.check : OFIcon.plus).image.font(.system(size: 10, weight: .bold))
                 }
-                Text(following ? "Following" : adding ? "Adding" : failed ? "Try Again" : "Follow")
+                Text(added ? "Added" : adding ? "Adding" : failed ? "Try Again" : label)
                     .font(OFFont.ui(13, .semibold))
             }
-            .foregroundStyle(following || adding ? Color.ofInk : Color.white)
+            .foregroundStyle(added || adding ? Color.ofInk : Color.white)
             .padding(.horizontal, 11)
             .frame(height: 30)
-            .background(following || adding ? Color.ofCode : Color.ofAccent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(added || adding ? Color.ofCode : Color.ofAccent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(Rectangle())
             .fixedSize()
         }
         .buttonStyle(.plain)
         .disabled(adding)
-        .help(following ? "Open this topic" : "Follow this search as a topic, with new matches in the sidebar")
-        .accessibilityLabel(following ? "Following \(query) as a topic" : "Follow \(query) as a topic")
-        .accessibilityHint(following ? "Opens the topic" : "")
+        .help(added ? "Open this topic" : "Add this search as a topic, with new matches in the sidebar")
+        .accessibilityLabel(added ? "\(query), added as a topic" : "Add \(query) as a topic")
+        .accessibilityHint(added ? "Opens the topic" : "")
     }
 
-    private func follow() {
+    private func add() {
         adding = true
         failed = false
         Task {
-            do { try await model.followTopic(query: query) } catch { failed = true }
+            do { try await model.addTopic(query: query) } catch { failed = true }
             adding = false
         }
     }

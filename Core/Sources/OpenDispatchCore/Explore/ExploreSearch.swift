@@ -77,7 +77,7 @@ public struct ExploreEpisode: Sendable, Hashable, Identifiable {
     }
 }
 
-/// What a YouTube search returns: videos, and the channels it matched (as sources to follow).
+/// What a YouTube search returns: videos, and the channels it matched (as sources to add).
 public struct ExploreVideoResults: Sendable, Hashable {
     public var videos: [ExploreVideo]
     /// Channels as `SourceSearchResult`s of kind `.youtube` (the channel's videos.xml feed, its avatar as `imageUrl`).
@@ -90,7 +90,7 @@ public struct ExploreVideoResults: Sendable, Hashable {
 }
 
 /// Explore's searches. Each section is its own call so the UI can show each as it lands and one failing
-/// leaves the others. Sources to follow come from `SourceSearching` plus the channels here.
+/// leaves the others. Sources to add come from `SourceSearching` plus the channels here.
 public protocol ExploreSearching: Sendable {
     /// YouTube videos and channels matching the query. Throws when YouTube can't be searched.
     func videos(_ query: String) async throws -> ExploreVideoResults

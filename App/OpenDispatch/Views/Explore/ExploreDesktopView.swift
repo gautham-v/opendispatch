@@ -6,7 +6,7 @@ import AppKit
 
 /// Explore on the Mac and iPad: the New Tab page's field, its recent searches and its results. The field
 /// searches on Return, or opens a web address typed or pasted into it (the New Tab page's old address field).
-/// Results are Videos (a grid), Articles (news), Posts (Reddit, X, Bluesky, Hacker News), Podcast episodes, Sources to follow and a last
+/// Results are Videos (a grid), Articles (news), Posts (Reddit, X, Bluesky, Hacker News), Podcast episodes, Sources and a last
 /// row that searches the web;
 /// each section lands on its own. A result opens in this tab, or ⌘-click (the menu's Open in New Tab) in a
 /// tab after it, leaving the page and its results in place.
@@ -195,7 +195,7 @@ struct ExploreDesktopResults: View {
 
     // MARK: Sections
 
-    /// The query and Follow, which makes it a topic.
+    /// The query and Add topic, which makes it a topic.
     private func topicRow(_ explore: ExploreStore) -> some View {
         HStack(spacing: 10) {
             Text("Results for \u{201C}\(explore.query)\u{201D}")
@@ -300,11 +300,11 @@ struct ExploreDesktopResults: View {
         case .idle:
             EmptyView()
         case .loading:
-            section("Sources to follow") { ExploreSkeleton(style: .rows) }
+            section("Sources") { ExploreSkeleton(style: .rows) }
         case .failed(let message):
-            section("Sources to follow") { ExploreFailure(what: "sources", message: message, retry: explore.retryFeeds) }
+            section("Sources") { ExploreFailure(what: "sources", message: message, retry: explore.retryFeeds) }
         case .loaded(let found):
-            section("Sources to follow", count: found.count, limit: Self.sourceLimit, expanded: $allSources) {
+            section("Sources", count: found.count, limit: Self.sourceLimit, expanded: $allSources) {
                 if found.isEmpty {
                     ExploreEmptyNote(text: "No sources for \u{201C}\(explore.query)\u{201D}")
                 } else {

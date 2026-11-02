@@ -35,11 +35,11 @@ enum ExploreTarget: Hashable, Identifiable {
     }
 }
 
-/// Explore's searches (videos, news articles, posts, podcast episodes, sources to follow) and the last results, which
+/// Explore's searches (videos, news articles, posts, podcast episodes, sources to add) and the last results, which
 /// stay while you open one and come back (⌘T again, or back from the reader on iPhone). AppModel owns it
 /// (`model.explore`); the New Tab page and the iPhone's Explore page read and drive it.
 ///
-/// A search runs on Return, not per keystroke; a new one cancels the one before. Sources to follow are the
+/// A search runs on Return, not per keystroke; a new one cancels the one before. Sources to add are the
 /// YouTube channels the video search matched, then the existing Add Source search (feeds and podcasts).
 /// Posts are searched on each place of `DiscussionPlace.searched` at once, each landing on its own; X only when the app is
 /// signed in to it (`WebAccountStore`), otherwise its tab offers the sign-in.
