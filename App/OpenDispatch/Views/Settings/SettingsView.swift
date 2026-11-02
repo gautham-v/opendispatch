@@ -19,7 +19,6 @@ struct SettingsView: View {
     @State private var pane: SettingsPane = .sources
     /// Phone: the pane pushed on the surrounding NavigationStack.
     @State private var pushed: SettingsPane?
-    @State private var isShortcutsShown = false
     @State private var isAddSourceShown = false
 
     private var compact: Bool {
@@ -48,9 +47,6 @@ struct SettingsView: View {
             if compact, model.isSettingsPresented, tab != .sources { pushed = pane }
         }
         .task { await model.loadIntegrations() }
-        .sheet(isPresented: $isShortcutsShown) {
-            ShortcutsView().environment(model)
-        }
         .sheet(isPresented: $isAddSourceShown) {
             AddSourceView().environment(model)
         }
@@ -154,7 +150,7 @@ struct SettingsView: View {
         case .sources:
             SettingsSourcesPane(onAdd: { isAddSourceShown = true }, onOpen: open(source:))
         case .appearance:
-            SettingsAppearancePane(onShowShortcuts: { isShortcutsShown = true })
+            SettingsAppearancePane()
         case .themes:
             SettingsThemesPane()
         case .reader:
@@ -163,6 +159,8 @@ struct SettingsView: View {
             SettingsPlaybackPane()
         case .notifications:
             SettingsNotificationsPane()
+        case .shortcuts:
+            SettingsShortcutsPane()
         case .integrations:
             SettingsIntegrationsPane()
         case .data:

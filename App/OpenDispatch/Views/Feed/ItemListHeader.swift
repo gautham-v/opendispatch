@@ -29,7 +29,7 @@ struct DesktopListHeader: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(FeedHoverIconButtonStyle())
-                .help("Show sidebar (⌘\\)")
+                .help(model.shortcutHelp("Show sidebar", .sidebar))
                 .accessibilityLabel("Show sidebar")
                 #if os(macOS)
                 ReaderHistoryButtons()

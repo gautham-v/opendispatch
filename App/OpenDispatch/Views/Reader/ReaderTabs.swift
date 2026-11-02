@@ -286,7 +286,7 @@ struct ReaderTabStrip: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(NewTabButtonStyle())
-            .help("New tab (⌘T)")
+            .help(model.shortcutHelp("New tab", .newTab))
             .accessibilityLabel("New tab")
         }
         .padding(.leading, -6)
@@ -333,7 +333,7 @@ struct ReaderTabStrip: View {
                     .buttonStyle(TabCloseButtonStyle())
                     .opacity(closable && (active || isHovered) ? 1 : 0)
                     .disabled(!closable)
-                    .help("Close tab (⌘W)")
+                    .help(model.shortcutHelp("Close tab", .closeTab))
                     .accessibilityLabel("Close tab")
                 }
                 .padding(.leading, 8)

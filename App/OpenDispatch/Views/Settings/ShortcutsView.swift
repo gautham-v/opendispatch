@@ -1,69 +1,11 @@
 import OpenDispatchCore
 import SwiftUI
 
-/// A shortcut as the help overlay shows it. `separator` reads between keys: "or" for alternatives,
-/// "then" for a chord; nil means the keys are pressed together. (Shortcut in use-keyboard.ts.)
-struct ShortcutEntry: Hashable, Sendable {
-    let keys: [String]
-    let label: String
-    var separator: String?
-}
-
-struct ShortcutGroup: Hashable, Sendable {
-    let title: String
-    let items: [ShortcutEntry]
-}
-
-/// Keyboard shortcuts overlay (shortcuts-dialog.tsx), opened with "?", ⌘/ or Settings → Appearance.
-/// Esc, "?" or the close button dismisses it.
+/// Keyboard shortcuts overlay (shortcuts-dialog.tsx), opened with "?" or ⌘/ unless those were changed. It shows
+/// the keys in use; Edit opens Settings → Shortcuts. Esc, the show-shortcuts key or the close button dismisses it.
 struct ShortcutsView: View {
     @Environment(\.dismiss) private var dismiss
-
-    /// SHORTCUTS in use-keyboard.ts, in display order. Keep in step with Views/Feed/KeyboardShortcuts.swift.
-    static let groups: [ShortcutGroup] = [
-        ShortcutGroup(title: "Items", items: [
-            ShortcutEntry(keys: ["j", "↓"], label: "Next item", separator: "or"),
-            ShortcutEntry(keys: ["k", "↑"], label: "Previous item", separator: "or"),
-            ShortcutEntry(keys: ["o", "Enter"], label: "Open original in the browser", separator: "or"),
-            ShortcutEntry(keys: ["s"], label: "Save or unsave"),
-            ShortcutEntry(keys: ["m"], label: "Mark as read or unread"),
-            ShortcutEntry(keys: ["⇧", "⌘", "R"], label: "Reload the article"),
-            ShortcutEntry(keys: ["⇧", "⌘", "C"], label: "Copy the article as Markdown"),
-            ShortcutEntry(keys: ["⇧", "⌘", "L"], label: "Listen to the article, pause or resume"),
-            ShortcutEntry(keys: ["Space"], label: "Play or pause the video"),
-            ShortcutEntry(keys: ["←", "→"], label: "Skip the video back or ahead 5 seconds", separator: "or"),
-        ]),
-        ShortcutGroup(title: "Views", items: [
-            ShortcutEntry(keys: ["g", "a"], label: "All", separator: "then"),
-            ShortcutEntry(keys: ["g", "s"], label: "Saved", separator: "then"),
-            ShortcutEntry(keys: ["g", "v"], label: "Video", separator: "then"),
-            ShortcutEntry(keys: ["g", "p"], label: "Podcasts", separator: "then"),
-            ShortcutEntry(keys: ["g", "h"], label: "History", separator: "then"),
-        ]),
-        ShortcutGroup(title: "Tabs and split view", items: [
-            ShortcutEntry(keys: ["⌘", "click"], label: "Open in a new tab"),
-            ShortcutEntry(keys: ["⌥", "click"], label: "Open in split view"),
-            ShortcutEntry(keys: ["⇧", "⌘", "]"], label: "Next tab"),
-            ShortcutEntry(keys: ["⇧", "⌘", "["], label: "Previous tab"),
-            ShortcutEntry(keys: ["⌘", "T"], label: "New tab"),
-            ShortcutEntry(keys: ["⌘", "L"], label: "Open a link in a new tab"),
-            ShortcutEntry(keys: ["⌘", "W"], label: "Close the tab"),
-            ShortcutEntry(keys: ["⇧", "⌘", "T"], label: "Reopen the last closed tab"),
-            ShortcutEntry(keys: ["⌥", "⌘", "S"], label: "Split view on or off"),
-            ShortcutEntry(keys: ["⌃", "⌘", "←"], label: "Move the tab to the left pane"),
-            ShortcutEntry(keys: ["⌃", "⌘", "→"], label: "Move the tab to the right pane, or split to the right"),
-        ]),
-        ShortcutGroup(title: "App", items: [
-            ShortcutEntry(keys: ["/"], label: "Search"),
-            ShortcutEntry(keys: ["⌘", "K"], label: "Filter sources in the sidebar"),
-            ShortcutEntry(keys: ["r"], label: "Refresh feeds"),
-            ShortcutEntry(keys: ["⌘", "N"], label: "Add a source"),
-            ShortcutEntry(keys: ["⌘", "\\"], label: "Show or hide the sidebar"),
-            ShortcutEntry(keys: ["⇧", "⌘", "F"], label: "Full-screen reader"),
-            ShortcutEntry(keys: ["Esc"], label: "Clear the source filter or search, or leave full screen"),
-            ShortcutEntry(keys: ["?"], label: "Show these shortcuts"),
-        ]),
-    ]
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         ScrollView {
@@ -72,16 +14,18 @@ struct ShortcutsView: View {
                     .font(OFFont.ui(17, .semibold))
                     .tracking(-0.17)
                     .foregroundStyle(.ofInk)
-                    .padding(.trailing, 40)
-                ForEach(Self.groups, id: \.title) { group in
+                    .padding(.trailing, 90)
+                ForEach(ShortcutSection.all, id: \.title) { section in
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(group.title)
+                        Text(section.title)
                             .font(OFFont.ui(11, .semibold))
                             .tracking(0.11)
                             .foregroundStyle(.ofFaint)
                             .padding(.bottom, 4)
-                        ForEach(group.items, id: \.label) { entry in
-                            row(entry)
+                        ForEach(section.rows, id: \.self) { row in
+                            if let entry = entry(row) {
+                                rowView(label: entry.label, parts: entry.parts)
+                            }
                         }
                     }
                     .padding(.top, 16)
@@ -98,22 +42,30 @@ struct ShortcutsView: View {
         #endif
         .background(Color.ofSurface)
         .overlay(alignment: .topTrailing) {
-            Button { dismiss() } label: {
-                OFIcon.close.image
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(.ofMuted)
-                    .frame(width: Metrics.desktopIconButton, height: Metrics.desktopIconButton)
-                    .contentShape(Rectangle())
+            HStack(spacing: 2) {
+                Button("Edit") {
+                    dismiss()
+                    model.showSettings(.shortcuts)
+                }
+                .buttonStyle(SettingsSmallButtonStyle(quiet: true))
+                Button { dismiss() } label: {
+                    OFIcon.close.image
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundStyle(.ofMuted)
+                        .frame(width: Metrics.desktopIconButton, height: Metrics.desktopIconButton)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.cancelAction)
+                .accessibilityLabel("Close keyboard shortcuts")
             }
-            .buttonStyle(.plain)
-            .keyboardShortcut(.cancelAction)
-            .accessibilityLabel("Close keyboard shortcuts")
             .padding(.top, 12)
             .padding(.trailing, 12)
         }
         .focusable()
         .focusEffectDisabled()
-        .onKeyPress("?") {
+        .onKeyPress(phases: .down) { press in
+            guard press.characters == model.settings.shortcuts.binding(for: .showShortcuts).key else { return .ignored }
             dismiss()
             return .handled
         }
@@ -123,20 +75,41 @@ struct ShortcutsView: View {
         #endif
     }
 
-    private func row(_ entry: ShortcutEntry) -> some View {
+    private struct Part: Hashable {
+        let keys: [String]
+        var separator: String?
+    }
+
+    /// A line's label and its alternatives; nil for an action with no keys.
+    private func entry(_ row: ShortcutRow) -> (label: String, parts: [Part])? {
+        switch row {
+        case .fixed(let label, let keys, let separator):
+            if separator == "or" { return (label, keys.map { Part(keys: [$0]) }) }
+            return (label, [Part(keys: keys, separator: separator)])
+        case .action(let action):
+            let map = model.settings.shortcuts
+            let b = map.binding(for: action)
+            var parts: [Part] = []
+            if b.key != nil {
+                let caps = ShortcutCapsContent(action: action, slot: .key, map: map)
+                parts.append(Part(keys: caps.keys, separator: caps.separator))
+            }
+            parts += action.fixedKeys.map { Part(keys: [$0]) }
+            if let combo = b.combo { parts.append(Part(keys: combo.caps)) }
+            return parts.isEmpty ? nil : (action.label, parts)
+        }
+    }
+
+    private func rowView(label: String, parts: [Part]) -> some View {
         HStack(spacing: 12) {
-            Text(entry.label)
+            Text(label)
                 .font(OFFont.ui(14))
                 .foregroundStyle(.ofInk)
                 .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 4) {
-                ForEach(Array(entry.keys.enumerated()), id: \.offset) { i, key in
-                    if i > 0, let sep = entry.separator {
-                        Text(sep)
-                            .font(OFFont.ui(11))
-                            .foregroundStyle(.ofFaint)
-                    }
-                    SettingsKeyCap(key: key)
+                ForEach(Array(parts.enumerated()), id: \.offset) { i, part in
+                    if i > 0 { ShortcutCapSeparator(text: "or") }
+                    ShortcutCaps(keys: part.keys, separator: part.separator)
                 }
             }
             .fixedSize()
@@ -164,4 +137,5 @@ struct SettingsKeyCap: View {
 
 #Preview {
     ShortcutsView()
+        .environment(AppModel.preview())
 }

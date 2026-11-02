@@ -23,7 +23,7 @@ struct SidebarFilterField: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .help("Search sources (⌘K)")
+                .help(model.shortcutHelp("Search sources", .filterSources))
                 .accessibilityLabel("Search sources")
             }
         }

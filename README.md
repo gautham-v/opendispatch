@@ -56,11 +56,11 @@ Single user, no accounts, no server. Everything is fetched and stored on the dev
 
 **Links**
 - `opendispatch://add?url=<url>` opens Add source prefilled with that URL.
-- `opendispatch://settings?tab=<sources|appearance|playback|integrations|data|about>` opens Settings on that pane.
+- `opendispatch://settings?tab=<sources|appearance|playback|shortcuts|integrations|data|about>` opens Settings on that pane.
 
 ## Keyboard shortcuts
 
-Mac, and iPad with a hardware keyboard. `?` or ⌘/ shows this list in the app.
+Mac, and iPad with a hardware keyboard. `?` or ⌘/ shows the current list in the app. These are the defaults; change them in Settings → Shortcuts.
 
 | Keys | Action |
 | --- | --- |

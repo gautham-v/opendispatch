@@ -63,9 +63,22 @@ struct OpenDispatchApp: App {
     }
 }
 
+extension FeedView {
+    var shortcutAction: ShortcutAction {
+        switch self {
+        case .all: .viewAll
+        case .saved: .viewSaved
+        case .articles: .viewArticles
+        case .posts: .viewPosts
+        case .video: .viewVideo
+        case .podcasts: .viewPodcasts
+        }
+    }
+}
+
 #if os(macOS)
-/// Menu bar commands. Single-key shortcuts (j/k/s/o/r/g-chords, /, ?) are handled in the window by
-/// Views/Feed/KeyboardShortcuts.swift; these are the ⌘ equivalents that belong in menus.
+/// Menu bar commands, with the ⌘ shortcuts from `model.settings.shortcuts` (Settings → Shortcuts). Single keys are
+/// handled in the window by Views/Feed/KeyboardShortcuts.swift.
 struct OpenDispatchCommands: Commands {
     let model: AppModel
     let speech: ReaderSpeech
@@ -78,101 +91,110 @@ struct OpenDispatchCommands: Commands {
         // Settings is an overlay in the main window (SettingsOverlay), so there's no Settings scene.
         CommandGroup(replacing: .appSettings) {
             Button("Settings…") { model.showSettings(model.settingsTab) }
-                .keyboardShortcut(",", modifiers: .command)
+                .keyboardShortcut(model.keyboardShortcut(.settings))
         }
         CommandGroup(replacing: .newItem) {
             Button("New Tab") { model.openNewTab() }
-                .keyboardShortcut("t", modifiers: .command)
+                .keyboardShortcut(model.keyboardShortcut(.newTab))
             Button("Open Link…") { model.openLocation() }
-                .keyboardShortcut("l", modifiers: .command)
+                .keyboardShortcut(model.keyboardShortcut(.openLink))
             Button("Add Source…") { model.isAddSourcePresented = true }
-                .keyboardShortcut("n", modifiers: .command)
+                .keyboardShortcut(model.keyboardShortcut(.addSource))
         }
         // Copies the focused reader's item (or its transcript) as Markdown for pasting into an AI.
         CommandGroup(after: .pasteboard) {
             Button("Copy as Markdown") { if let item = model.selectedItem { model.copyMarkdown(item: item) } }
-                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .keyboardShortcut(model.keyboardShortcut(.copyMarkdown))
                 .disabled(model.selectedItem == nil)
         }
         CommandMenu("Feed") {
             Button("Refresh") { Task { await model.refresh(force: true) } }
-                .keyboardShortcut("r", modifiers: .command)
+                .keyboardShortcut(model.keyboardShortcut(.refresh))
                 .disabled(model.isRefreshing)
             Button("Search") { model.openSearch() }
-                .keyboardShortcut("f", modifiers: .command)
+                .keyboardShortcut(model.keyboardShortcut(.search))
             Button("Filter Sources") { model.openSourceFilter() }
-                .keyboardShortcut("k", modifiers: .command)
+                .keyboardShortcut(model.keyboardShortcut(.filterSources))
             Button("New Topic…") { model.beginNewTopic() }
             Divider()
             // Same order as the sidebar.
             ForEach(SidebarViewItem.ordered) { item in
                 switch item {
                 case .explore: Button("Explore") { model.openLocation() }
-                case .view(let view): Button(view.title) { model.navigate(view: view) }
-                case .highlights: Button("Highlights") { model.showHighlights() }
-                case .history: Button("History") { model.showHistory() }
+                case .view(let view):
+                    Button(view.title) { model.navigate(view: view) }
+                        .keyboardShortcut(model.keyboardShortcut(view.shortcutAction))
+                case .highlights:
+                    Button("Highlights") { model.showHighlights() }
+                        .keyboardShortcut(model.keyboardShortcut(.viewHighlights))
+                case .history:
+                    Button("History") { model.showHistory() }
+                        .keyboardShortcut(model.keyboardShortcut(.viewHistory))
                 }
             }
             Divider()
             Button(model.selectedItem.map { HistoryStore.markLabel(kind: $0.source.kind, isRead: model.history.isRead($0)) } ?? "Mark as Read") {
                 model.toggleReadOnSelection()
             }
+            .keyboardShortcut(model.keyboardShortcut(.toggleRead))
             .disabled(model.selectedItem == nil)
             Button("Mark All as Read") { model.markAllRead() }
+                .keyboardShortcut(model.keyboardShortcut(.markAllRead))
                 .disabled(model.showsHighlights || model.showsHistory || model.items.isEmpty)
             Toggle("Hide Read Items", isOn: Binding(get: { model.settings.hideReadItems }, set: { _ in model.toggleHideReadItems() }))
         }
         CommandGroup(replacing: .saveItem) {
-            Button(model.hasReaderTabs ? "Close Tab" : "Close Window") { closeTabOrWindow() }
-                .keyboardShortcut("w", modifiers: .command)
+            Button(model.hasReaderTabs ? "Close Tab" : "Close Window") { model.closeTabOrWindow() }
+                .keyboardShortcut(model.keyboardShortcut(.closeTab))
             Button("Reopen Closed Tab") { model.reopenClosedTab() }
-                .keyboardShortcut("t", modifiers: [.command, .shift])
+                .keyboardShortcut(model.keyboardShortcut(.reopenTab))
                 .disabled(model.closedItems.isEmpty)
         }
         CommandGroup(after: .sidebar) {
             Button(model.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar") { model.toggleSidebar() }
-                .keyboardShortcut("\\", modifiers: .command)
+                .keyboardShortcut(model.keyboardShortcut(.sidebar))
             Button(model.focusMode ? "Exit Full-Screen Reader" : "Full-Screen Reader") { model.toggleFocusMode() }
-                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .keyboardShortcut(model.keyboardShortcut(.fullScreen))
             Divider()
             Button(model.isSplit ? "Close Split View" : "Split View") { model.toggleSplit() }
-                .keyboardShortcut("s", modifiers: [.command, .option])
+                .keyboardShortcut(model.keyboardShortcut(.split))
                 .disabled(model.selectedItem == nil && !model.isSplit)
             Button("Move Tab to Left Pane") { model.moveActiveTab(toRight: false) }
-                .keyboardShortcut(.leftArrow, modifiers: [.control, .command])
+                .keyboardShortcut(model.keyboardShortcut(.moveTabLeft))
                 .disabled(!model.canMoveTabLeft)
             Button(model.isSplit ? "Move Tab to Right Pane" : "Split to Right") { model.moveActiveTab(toRight: true) }
-                .keyboardShortcut(.rightArrow, modifiers: [.control, .command])
+                .keyboardShortcut(model.keyboardShortcut(.moveTabRight))
                 .disabled(!model.canMoveTabRight)
             Button("Back") { model.goBack() }
-                .keyboardShortcut("[", modifiers: .command)
+                .keyboardShortcut(model.keyboardShortcut(.back))
                 .disabled(!model.canGoBack)
             Button("Forward") { model.goForward() }
-                .keyboardShortcut("]", modifiers: .command)
+                .keyboardShortcut(model.keyboardShortcut(.forward))
                 .disabled(!model.canGoForward)
             Button("Show Next Tab") { model.selectTab(offset: 1) }
-                .keyboardShortcut("]", modifiers: [.command, .shift])
+                .keyboardShortcut(model.keyboardShortcut(.nextTab))
                 .disabled(model.panes[model.focusedPane].tabs.count < 2)
             Button("Show Previous Tab") { model.selectTab(offset: -1) }
-                .keyboardShortcut("[", modifiers: [.command, .shift])
+                .keyboardShortcut(model.keyboardShortcut(.previousTab))
                 .disabled(model.panes[model.focusedPane].tabs.count < 2)
             Button(model.panes[model.focusedPane].activeTab.isPinned ? "Unpin Tab" : "Pin Tab") {
                 model.togglePinned(pane: model.focusedPane, index: model.panes[model.focusedPane].active)
             }
+            .keyboardShortcut(model.keyboardShortcut(.pinTab))
             .disabled(model.selectedItem == nil)
             Divider()
             Button(listenTitle) { speech.requestToggle() }
-                .keyboardShortcut("l", modifiers: [.command, .shift])
+                .keyboardShortcut(model.keyboardShortcut(.listen))
                 .disabled(model.selectedItem == nil || model.selectedItem?.source.kind == .youtube)
             Divider()
             // Re-extract the focused reader's article (⌘R is Feed › Refresh).
             Button("Reload Article") { if let item = model.selectedItem { model.reloadArticle(item) } }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .keyboardShortcut(model.keyboardShortcut(.reloadArticle))
                 .disabled(model.selectedItem == nil || model.selectedItem?.source.kind == .youtube)
         }
         CommandGroup(replacing: .help) {
             Button("Keyboard Shortcuts") { model.isShortcutsPresented = true }
-                .keyboardShortcut("/", modifiers: .command)
+                .keyboardShortcut(model.keyboardShortcut(.showShortcuts))
         }
     }
 
@@ -182,19 +204,6 @@ struct OpenDispatchCommands: Commands {
         case .playing: "Pause Listening"
         case .paused: "Resume Listening"
         }
-    }
-
-    /// ⌘W: close the Settings overlay when it's up; else close the reader's active tab when the reader
-    /// window is key and has tabs, else close the key window.
-    private func closeTabOrWindow() {
-        if let key = NSApp.keyWindow, key === ReaderWindow.current {
-            if model.isSettingsPresented {
-                model.isSettingsPresented = false
-                return
-            }
-            if model.closeActiveTab() { return }
-        }
-        NSApp.keyWindow?.performClose(nil)
     }
 }
 #endif

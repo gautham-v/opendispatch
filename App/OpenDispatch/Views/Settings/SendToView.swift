@@ -142,7 +142,7 @@ struct SendToView: View {
                 Button("Link") { ReaderPasteboard.copy(link) }
             }
             Button("Markdown") { model.copyMarkdown(item: item) }
-                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .keyboardShortcut(model.keyboardShortcut(.copyMarkdown))
         }
         Section("Send To") {
             if targets.isEmpty {
@@ -158,7 +158,7 @@ struct SendToView: View {
         if item.source.kind != .youtube {
             Section {
                 Button("Reload Article") { model.reloadArticle(item) }
-                    .keyboardShortcut("r", modifiers: [.command, .shift])
+                    .keyboardShortcut(model.keyboardShortcut(.reloadArticle))
             }
         }
     }

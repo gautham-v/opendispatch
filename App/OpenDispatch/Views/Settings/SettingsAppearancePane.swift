@@ -2,11 +2,10 @@ import OpenDispatchCore
 import SwiftUI
 
 /// Appearance pane: the color scheme as pictures, the accent color, the app icon, and how lists look (density, thumbnails,
-/// the unread marker, source icons, feed order, hiding read items), then keyboard shortcuts. Values live in `model.settings`
+/// the unread marker, source icons, feed order, hiding read items). Values live in `model.settings`
 /// (AppSettings, JSON in UserDefaults "openfeed.settings"); RootView applies the scheme, ThemeRuntime the accent,
 /// and list rows read the rest through `\.listLayout`.
 struct SettingsAppearancePane: View {
-    let onShowShortcuts: () -> Void
     @Environment(AppModel.self) private var model
     @Environment(\.settingsCompact) private var compact
 
@@ -57,16 +56,6 @@ struct SettingsAppearancePane: View {
                 }
                 SettingsRow(label: "Hide read items", hint: "They stay in History") {
                     SettingsToggle(label: "Hide read items", isOn: $model.settings.hideReadItems)
-                }
-            }
-            // Shortcuts need a hardware keyboard and the side-by-side layout, so not on phones.
-            if !compact {
-                SettingsSection(title: "Keyboard") {
-                    SettingsRow(label: "Keyboard shortcuts", hint: "Or press ? anywhere") {
-                        Button("Show", action: onShowShortcuts)
-                            .buttonStyle(SettingsPaneButtonStyle())
-                            .accessibilityLabel("Show keyboard shortcuts")
-                    }
                 }
             }
         }

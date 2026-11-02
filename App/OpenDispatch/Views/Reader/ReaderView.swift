@@ -330,7 +330,7 @@ struct ReaderItemView: View {
                     OFIcon.headphones.image.foregroundStyle(speech.owns(speechPage) ? Color.ofAccent : Color.ofInk)
                 }
                 .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
-                .help(speech.owns(speechPage) ? "Pause or resume reading (⇧⌘L)" : "Listen (⇧⌘L)")
+                .help(model.shortcutHelp(speech.owns(speechPage) ? "Pause or resume reading" : "Listen", .listen))
                 .accessibilityLabel(listenLabel)
             }
             if !isVideo {
@@ -354,7 +354,7 @@ struct ReaderItemView: View {
                 } else {
                     Button { model.toggleSplit() } label: { OFIcon.split.image }
                         .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
-                        .help("Split view (⌥⌘S)")
+                        .help(model.shortcutHelp("Split view", .split))
                         .accessibilityLabel("Split view")
                 }
 
@@ -364,7 +364,7 @@ struct ReaderItemView: View {
                         (model.isFocused ? OFIcon.collapse : OFIcon.expand).image
                     }
                     .buttonStyle(ReaderIconButtonStyle(size: buttonSize, glyph: glyphSize))
-                    .help(model.isFocused ? "Exit full screen (esc)" : "Full screen (⇧⌘F)")
+                    .help(model.isFocused ? "Exit full screen (esc)" : model.shortcutHelp("Full screen", .fullScreen))
                     .accessibilityLabel(model.isFocused ? "Exit full screen" : "Full screen")
                 }
             }

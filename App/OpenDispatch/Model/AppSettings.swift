@@ -224,6 +224,8 @@ struct AppSettings: Codable, Equatable, Sendable {
     /// The color of a highlight made without picking one (Add Note, the first color in the menus).
     var highlightColor: HighlightColor = .yellow
     var linkStyle: LinkStyleSetting = .underlined
+    /// Settings → Shortcuts: the keys changed from their defaults.
+    var shortcuts = ShortcutMap()
 
     static let defaults = AppSettings()
     // UserDefaults keys keep the app's original name (openfeed.*) so existing settings carry over.
@@ -274,6 +276,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         sourceIcons = (try? c.decode(SourceIconSetting.self, forKey: .sourceIcons)) ?? .color
         highlightColor = (try? c.decode(HighlightColor.self, forKey: .highlightColor)) ?? .yellow
         linkStyle = (try? c.decode(LinkStyleSetting.self, forKey: .linkStyle)) ?? .underlined
+        shortcuts = (try? c.decode(ShortcutMap.self, forKey: .shortcuts)) ?? ShortcutMap()
     }
 
     init() {}

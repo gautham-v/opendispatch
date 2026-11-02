@@ -679,7 +679,7 @@ Design (App/OpenDispatch/Design):
 | Send to: one target sends directly, two show a menu, none opens Settings → Integrations (send-to.tsx) | Views/Reader/ (uses AppModel.integrations/send/showSettings) |
 | Phone Sources tab: folders (count) and sources list, open folder/source feed with back to Sources, Add source (sources-page.tsx) | Views/Sources/SourcesView.swift |
 | Add source dialog: URL field, normalize errors inline, detecting spinner, error message, success closes (add-source.tsx) | Views/Sources/AddSourceView.swift |
-| Settings: Sources pane (grouped by folder, last fetched / last error, rename, move, remove with confirm, open feed, Import/Export OPML with result summary), Appearance (theme, reader font, text size, keyboard shortcuts link), Playback (autoplay, theater), Integrations (Readwise token with hint/clear/test, webhook URL with save/clear/test) (settings-dialog.tsx) | Views/Settings/SettingsView.swift (+ pane files in Views/Settings/) |
+| Settings: Sources pane (grouped by folder, last fetched / last error, rename, move, remove with confirm, open feed, Import/Export OPML with result summary), Appearance (theme, reader font, text size), Playback (autoplay, theater), Integrations (Readwise token with hint/clear/test, webhook URL with save/clear/test) (settings-dialog.tsx) | Views/Settings/SettingsView.swift (+ pane files in Views/Settings/) |
 | Shortcuts overlay (shortcuts-dialog.tsx + SHORTCUTS in use-keyboard.ts) | Views/Settings/ShortcutsView.swift |
 | Theme system/light/dark (use-settings.ts, layout.tsx) | AppSettings + RootView .preferredColorScheme (done) |
 | PWA manifest, service worker, offline cache, APP_PASSWORD gate, CRON_SECRET, Vercel | Not ported (native app, local DB is the offline cache) |
@@ -952,7 +952,7 @@ All in `App/OpenDispatch/Views/Settings/` (type names claimed; do not redeclare)
   own sheets (not via the model flags, which would stack a sheet on RootView while Settings is a sheet).
 - `typealias SettingsPane = SettingsTab` (+ `symbol`): the four web tabs plus native Data and About, so
   `model.showSettings(.data)` / `.about` open those panes too; picking a pane writes `model.settingsTab`.
-- Panes: `SettingsSourcesPane(onAdd:onOpen:)`, `SettingsAppearancePane(onShowShortcuts:)`, `SettingsPlaybackPane`,
+- Panes: `SettingsSourcesPane(onAdd:onOpen:)`, `SettingsAppearancePane`, `SettingsPlaybackPane`, `SettingsShortcutsPane`,
   `SettingsIntegrationsPane`, `SettingsDataPane`, `SettingsAboutPane`.
 - Controls (SettingsControls.swift): `SettingsPaneHeading`, `SettingsSectionLabel`, `SettingsRow`, `SettingsHairline`,
   `SettingsSegmented`, `SettingsPaneButtonStyle`, `SettingsSmallButtonStyle`, `SettingsPrimaryButtonStyle`,
@@ -966,8 +966,8 @@ All in `App/OpenDispatch/Views/Settings/` (type names claimed; do not redeclare)
   from Appearance); `SettingsToggle`, `SettingsMenuPicker`, `SettingsSwatch` (SettingsAppearancePane.swift). Themes
   model: `ThemeBase`, `AppTheme`, `ThemePalette`, `ThemeColors`, `ThemeRuntime`, `AccentSetting` (Design/Themes.swift);
   list rows: `ListLayout`, `EnvironmentValues.listLayout`, `UnreadDot` (Views/Shared/ListLayout.swift).
-- `ShortcutsView` (+ `ShortcutEntry`, `ShortcutGroup`, `ShortcutsView.groups` = SHORTCUTS, `SettingsKeyCap`). Esc,
-  "?" and the close button dismiss it. Adds "⌘N Add a source" to the App group.
+- `ShortcutsView` (+ `SettingsKeyCap`): lists `ShortcutSection.all` with the keys in `AppSettings.shortcuts`; Edit opens
+  `SettingsShortcutsPane`. Esc, the show-shortcuts key and the close button dismiss it.
 - `SendToView(item: FeedItem, size: CGFloat = 30, iconSize: CGFloat = 17)` — port of send-to.tsx for the reader
   toolbar: one target sends directly, two show a Menu ("Readwise Reader" / "Webhook"), none opens Settings →
   Integrations (macOS `openSettings()`, iOS `model.showSettings(.integrations)`). Pulse while sending, accent check
@@ -1015,8 +1015,10 @@ Integration notes for other agents:
 - **Sources tab**: push `ItemListView()` after `model.navigate(sourceID:)` / `navigate(folderID:)`. Its back chevron
   calls `dismiss()` then `model.goHome()` when `model.phoneTab == .sources`.
 - **Keyboard shortcuts** (single keys) are installed by ItemListView on macOS (NSEvent local monitor scoped to its
-  window; ignored while a text field has focus, a sheet is attached, or ⌘/⌃/⌥ is held) and on iPad (hidden
-  `.keyboardShortcut` buttons, regular width only). Don't install another handler for these keys.
+  window; ignored while a text field has focus, a sheet is attached or Settings is up, or ⌘/⌃/⌥ is held unless it's the
+  ⌘ shortcut of an action with no menu item) and on iPad (hidden `.keyboardShortcut` buttons, regular width only, for ⌘
+  shortcuts too). Every key comes from `ShortcutMap` (`Core/.../Models/KeyboardShortcuts.swift`); add new actions there and
+  in `ShortcutRunner`. Don't install another handler for these keys.
 - On macOS the list column draws its own inset panel (ofSurface, 6pt corners, 10pt vertical inset on ofGround,
   plus 10pt leading when the sidebar is collapsed) and shows a show-sidebar button in its header when collapsed.
 

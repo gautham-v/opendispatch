@@ -5,18 +5,19 @@ import AppKit
 import WebKit
 #endif
 
-/// Single-key shortcuts from src/hooks/use-keyboard.ts:
-///   j / ↓ next item, k / ↑ previous, o / Enter open original, s save or unsave, r refresh,
-///   / search, ? shortcuts, g then a / s / v / p (within 1 s) for All / Saved / Video / Podcasts,
-///   Esc clears an open search, else leaves the full-screen reader.
-/// ⌘\, ⇧⌘F, ⌘F, ⌘R and ⌘/ are menu commands (OpenDispatchApp.swift).
+/// Single keys, by default from src/hooks/use-keyboard.ts: j / ↓ next item, k / ↑ previous, o / Enter open
+/// original, s save or unsave, r refresh, / search, ? shortcuts, g then a / s / v / p / h (within 1 s) for the
+/// views. ↓, ↑, Enter and Esc are fixed (Esc clears an open search, else leaves the full-screen reader); the rest
+/// come from `model.settings.shortcuts` (Settings → Shortcuts). ⌘ shortcuts are menu commands
+/// (OpenDispatchApp.swift), apart from the actions with no menu item (`ShortcutAction.hasNoMenuItem`).
 ///
 /// macOS: a local key monitor scoped to the window hosting the list. Keys pass through while a text
 /// field has focus (except Esc in the search field), while a sheet is attached or the Settings overlay
-/// is up (its close button takes Esc), or with ⌘/⌃/⌥ held.
+/// is up (its close button takes Esc), or with ⌘/⌃/⌥ held, unless that's one of those ⌘ shortcuts.
 /// Arrows keep scrolling the article after the last click landed right of the list (the reader),
 /// like the web's `readerClicked`.
-/// iPad with a hardware keyboard (regular width): hidden buttons with `.keyboardShortcut`.
+/// iPad with a hardware keyboard (regular width): hidden buttons with `.keyboardShortcut`, for the ⌘ shortcuts
+/// too, since iPad has no menu commands. They stand down while Settings is up, so its recorder hears every key.
 /// iPhone: off, as on the web (single keys need the list and reader side by side).
 extension View {
     func feedKeyboardShortcuts(searchFocus: FocusState<Bool>.Binding) -> some View {
@@ -34,11 +35,10 @@ enum FeedKey: Equatable {
 @MainActor
 final class FeedKeyHandler {
     private static let chordInterval: TimeInterval = 1
-    private static let chords: [Character: FeedView] = ["a": .all, "s": .saved, "v": .video, "p": .podcasts]
     private var gAt: Date?
 
     /// Returns true when the key was handled (and should be swallowed).
-    func handle(_ key: FeedKey, model: AppModel, openURL: (URL) -> Void, focusSearch: () -> Void) -> Bool {
+    func handle(_ key: FeedKey, model: AppModel, run: (ShortcutAction) -> Void) -> Bool {
         if key == .escape {
             guard model.isSourceFilterOpen || model.isSearchOpen || model.focusMode else { return false }
             model.escape()
@@ -46,12 +46,8 @@ final class FeedKeyHandler {
         }
         if let at = gAt, Date().timeIntervalSince(at) < Self.chordInterval {
             gAt = nil
-            if case .char(let c) = key, let view = Self.chords[c] {
-                model.navigate(view: view)
-                return true
-            }
-            if key == .char("h") {
-                model.showHistory()
+            if case .char(let c) = key, let action = model.settings.shortcuts.action(forChordKey: String(c)) {
+                run(action)
                 return true
             }
             return false
@@ -59,27 +55,18 @@ final class FeedKeyHandler {
         gAt = nil
 
         switch key {
-        case .down, .char("j"):
-            model.moveSelection(by: 1)
-        case .up, .char("k"):
-            model.moveSelection(by: -1)
-        case .enter, .char("o"):
-            guard let item = model.selectedItem, let url = URL(string: item.item.url) else { return true }
-            if model.opensOnYouTube(item) { model.watchOnYouTube(item) } else { openURL(url) }
-        case .char("s"):
-            Task { await model.toggleSavedOnSelection() }
-        case .char("m"):
-            model.toggleReadOnSelection()
-        case .char("r"):
-            if !model.isRefreshing { Task { await model.refresh(force: true) } }
-        case .char("/"):
-            focusSearch()
-        case .char("?"):
-            model.isShortcutsPresented.toggle()
-        case .char("g"):
-            gAt = Date()
-        default:
-            return false
+        case .down: run(.nextItem)
+        case .up: run(.previousItem)
+        case .enter: run(.openOriginal)
+        case .escape: return false
+        case .char(let c):
+            if String(c) == ShortcutMap.chordPrefix {
+                gAt = Date()
+            } else if let action = model.settings.shortcuts.action(forKey: String(c)) {
+                run(action)
+            } else {
+                return false
+            }
         }
         return true
     }
@@ -88,6 +75,7 @@ final class FeedKeyHandler {
 private struct FeedKeyboardShortcutsModifier: ViewModifier {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
+    @Environment(ReaderSpeech.self) private var speech
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -117,7 +105,12 @@ private struct FeedKeyboardShortcutsModifier: ViewModifier {
                         model.closeSearch()
                         return true
                     }
-                    return handler.handle(key, model: model, openURL: { openURL($0) }, focusSearch: focusSearch)
+                    return handler.handle(key, model: model, run: runner.run)
+                }
+                monitor.onCombo = { combo in
+                    guard let action = model.settings.shortcuts.action(forCombo: combo), action.hasNoMenuItem else { return false }
+                    runner.run(action)
+                    return true
                 }
                 monitor.isSearchFocused = { searchFocus.wrappedValue }
                 monitor.isReaderFullScreen = { model.isFocused }
@@ -128,9 +121,13 @@ private struct FeedKeyboardShortcutsModifier: ViewModifier {
         #else
         content
             .background {
-                if horizontalSizeClass == .regular { iPadShortcutButtons }
+                if horizontalSizeClass == .regular, !model.isSettingsPresented { iPadShortcutButtons }
             }
         #endif
+    }
+
+    private var runner: ShortcutRunner {
+        ShortcutRunner(model: model, speech: speech, openURL: { openURL($0) }, focusSearch: focusSearch)
     }
 
     private func focusSearch() {
@@ -142,13 +139,33 @@ private struct FeedKeyboardShortcutsModifier: ViewModifier {
     }
 
     #if os(iOS)
-    private static let characterKeys: [Character] = ["j", "k", "o", "s", "m", "r", "/", "?", "g", "a", "v", "p", "h"]
+    /// The keys in use, plain and after g, and g itself.
+    private var characterKeys: [Character] {
+        let map = model.settings.shortcuts
+        let keys = ShortcutAction.allCases.compactMap { map.binding(for: $0).key?.first }
+        return Array(Set(keys + Array(ShortcutMap.chordPrefix))).sorted()
+    }
+
+    private var combos: [KeyCombo] {
+        ShortcutAction.allCases.compactMap { model.settings.shortcuts.binding(for: $0).combo }
+    }
+
+    /// Shift is part of how a capital or a symbol like ? gets typed.
+    private static func needsShift(_ c: Character) -> Bool {
+        c.isUppercase || "~!@#$%^&*()_+{}|:\"<>?".contains(c)
+    }
 
     /// Invisible buttons that register UIKeyCommands; text fields keep priority for plain keys.
     private var iPadShortcutButtons: some View {
         ZStack {
-            ForEach(Self.characterKeys, id: \.self) { c in
-                shortcutButton(KeyEquivalent(c), modifiers: c == "?" ? .shift : []) { .char(c) }
+            ForEach(characterKeys, id: \.self) { c in
+                shortcutButton(KeyEquivalent(Character(c.lowercased())), modifiers: Self.needsShift(c) ? .shift : []) { .char(c) }
+            }
+            ForEach(combos, id: \.self) { combo in
+                Button("") {
+                    if let action = model.settings.shortcuts.action(forCombo: combo) { runner.run(action) }
+                }
+                .keyboardShortcut(combo.keyboardShortcut)
             }
             shortcutButton(.downArrow) { .down }
             shortcutButton(.upArrow) { .up }
@@ -162,7 +179,7 @@ private struct FeedKeyboardShortcutsModifier: ViewModifier {
 
     private func shortcutButton(_ key: KeyEquivalent, modifiers: EventModifiers = [], _ make: @escaping () -> FeedKey) -> some View {
         Button("") {
-            _ = handler.handle(make(), model: model, openURL: { openURL($0) }, focusSearch: focusSearch)
+            _ = handler.handle(make(), model: model, run: runner.run)
         }
         .keyboardShortcut(key, modifiers: modifiers)
     }
@@ -184,6 +201,7 @@ private final class FeedKeyMonitor {
     /// Right edge of the list column in window coordinates; clicks right of it are in the reader.
     var listMaxX: CGFloat = 0
     var onKey: ((FeedKey, _ typingInSearch: Bool) -> Bool)?
+    var onCombo: ((KeyCombo) -> Bool)?
     var isSearchFocused: (() -> Bool)?
     /// The full-screen reader covers the list, so every click lands in the reader.
     var isReaderFullScreen: (() -> Bool)?
@@ -235,7 +253,9 @@ private final class FeedKeyMonitor {
         guard let window, event.window === window, window.attachedSheet == nil, window.isKeyWindow,
               isSuspended?() != true else { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if !flags.intersection([.command, .control, .option]).isEmpty { return false }
+        if !flags.intersection([.command, .control, .option]).isEmpty {
+            return KeyCombo(event: event).flatMap { onCombo?($0) } ?? false
+        }
 
         let typing = window.firstResponder is NSText
         let isEscape = event.keyCode == 53
