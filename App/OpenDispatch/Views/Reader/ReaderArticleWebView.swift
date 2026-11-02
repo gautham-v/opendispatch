@@ -133,16 +133,79 @@ enum ReaderHTML {
     })();
     """
 
-    /// iPhone: a tap on an image in the article sends it, with every other image in the article, to the app,
-    /// which opens them full screen (ReaderImageViewer.swift). Avatars, emoji and link-card images are left
-    /// alone, as is an image inside a link to a page; one linked to a bigger copy of itself opens that copy.
+    /// Draws a post's `.x-gallery`: the count, the arrows, and the strip of thumbnails that follows the big photo, all outside the text
+    /// the highlight index and read aloud walk. A video slid away from stops. On the Mac the page says when the pointer is over a gallery,
+    /// so a sideways scroll there moves the photos instead of going Back (`ReaderNavigationGestures`).
+    static let galleryScript = """
+    (function () {
+      var hover = window.webkit.messageHandlers.openDispatchGallery;
+      var chevron = function (d) { return '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + d + '"/></svg>'; };
+      document.querySelectorAll('article .x-gallery').forEach(function (gallery) {
+        var track = gallery.querySelector('.x-gallery-track');
+        var items = track ? Array.prototype.slice.call(track.children) : [];
+        if (items.length < 2) return;
+        var stage = document.createElement('div');
+        stage.className = 'x-gallery-stage';
+        gallery.insertBefore(stage, track);
+        stage.appendChild(track);
+        var strip = document.createElement('div');
+        strip.className = 'x-strip';
+        gallery.appendChild(strip);
+        var current = -1;
+        function go(i) { track.scrollTo({ left: i * track.clientWidth, behavior: 'smooth' }); }
+        function arrow(name, label, d, by) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'x-gallery-arrow x-gallery-' + name;
+          b.setAttribute('aria-label', label);
+          b.innerHTML = chevron(d);
+          b.addEventListener('click', function () { go(current + by); });
+          stage.appendChild(b);
+          return b;
+        }
+        var prev = arrow('prev', 'Previous photo', 'M10 3 5 8l5 5', -1);
+        var next = arrow('next', 'Next photo', 'm6 3 5 5-5 5', 1);
+        var thumbs = items.map(function (item, i) {
+          var t = document.createElement('img');
+          t.src = item.getAttribute('data-thumb') || item.getAttribute('poster') || item.getAttribute('src');
+          t.alt = '';
+          t.setAttribute('role', 'button');
+          t.setAttribute('aria-label', 'Show photo ' + (i + 1) + ' of ' + items.length);
+          t.addEventListener('click', function () { go(i); });
+          strip.appendChild(t);
+          return t;
+        });
+        function show(i) {
+          if (i === current) return;
+          current = i;
+          stage.setAttribute('data-count', (i + 1) + '/' + items.length);
+          prev.disabled = i === 0;
+          next.disabled = i === items.length - 1;
+          thumbs.forEach(function (t, j) { t.classList.toggle('x-on', j === i); });
+          var on = thumbs[i];
+          strip.scrollTo({ left: on.offsetLeft - strip.offsetLeft - (strip.clientWidth - on.clientWidth) / 2, behavior: 'smooth' });
+          items.forEach(function (item, j) { if (j !== i && item.tagName === 'VIDEO') item.pause(); });
+        }
+        track.addEventListener('scroll', function () { show(Math.round(track.scrollLeft / (track.clientWidth || 1))); }, { passive: true });
+        if (hover) {
+          stage.addEventListener('mouseenter', function () { hover.postMessage(true); });
+          stage.addEventListener('mouseleave', function () { hover.postMessage(false); });
+        }
+        show(0);
+      });
+    })();
+    """
+
+    /// A click on an image in the article sends it, with the others of its post's gallery or else of the article, to the app, which opens
+    /// them full screen (ReaderImageViewer.swift). Avatars, emoji, link-card images and a gallery's thumbnails are left alone, as is an
+    /// image inside a link to a page; one linked to a bigger copy of itself opens that copy.
     static let imageTapScript = """
     (function () {
       var article = document.querySelector('article');
       if (!article) return;
       var imageLink = /\\.(jpe?g|png|gif|webp|avif|heic)([?#]|$)/i;
       function zoomable(img) {
-        if (img.closest('.x-who, .x-card, .x-avatar, .x-emoji')) return false;
+        if (img.closest('.x-who, .x-card, .x-avatar, .x-emoji, .x-strip')) return false;
         var a = img.closest('a[href]');
         if (a && !imageLink.test(a.href)) return false;
         var r = img.getBoundingClientRect();
@@ -167,9 +230,12 @@ enum ReaderHTML {
         if (sel && !sel.isCollapsed) return;
         e.preventDefault();
         e.stopPropagation();
-        var all = Array.prototype.filter.call(article.querySelectorAll('img'), zoomable);
+        var all = Array.prototype.filter.call((img.closest('.x-gallery') || article).querySelectorAll('img'), zoomable);
         window.webkit.messageHandlers.openDispatchImage.postMessage({ urls: all.map(source), index: Math.max(0, all.indexOf(img)) });
       }, true);
+      article.addEventListener('mouseover', function (e) {
+        if (e.target && e.target.tagName === 'IMG' && zoomable(e.target)) e.target.style.cursor = 'zoom-in';
+      });
     })();
     """
 
@@ -221,7 +287,7 @@ struct ReaderArticleWebView: View {
     @Environment(HighlightStore.self) private var highlights
     @Environment(\.highlightArticle) private var article
     @State private var height: CGFloat = 0
-    /// The images opened full screen from a tap (iPhone).
+    /// The images opened full screen from a tap (iPhone; the Mac's viewer covers the window, `ReaderImageOverlay`).
     @State private var gallery: ReaderImageGallery?
     @State private var bridge = ReaderHighlightBridge()
     @State private var media = ReaderPostMedia()
@@ -316,7 +382,9 @@ final class ReaderPostMedia {
                 if (v.readyState >= 1) v.currentTime = time;
                 else v.addEventListener('loadedmetadata', function () { v.currentTime = time; }, { once: true });
               });
-              if (\(autoplay) && videos.length) { var p = videos[0].play(); if (p) p.catch(function () {}); }
+              // A video further along a gallery is out of sight.
+              var first = Array.prototype.find.call(videos, function (v) { return !v.closest('.x-gallery-track') || !v.previousElementSibling; });
+              if (\(autoplay) && first) { var p = first.play(); if (p) p.catch(function () {}); }
             })();
             """, inFrame: nil, in: .defaultClient) { _, _ in }
     }
@@ -348,9 +416,20 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == "openDispatchImage" {
-            if let gallery = ReaderImageGallery(message: message.body) { onImage?(gallery) }
+            guard let gallery = ReaderImageGallery(message: message.body) else { return }
+            #if os(macOS)
+            if let window = message.webView?.window { ReaderImageOverlay.present(gallery, in: window) }
+            #else
+            onImage?(gallery)
+            #endif
             return
         }
+        #if os(macOS)
+        if message.name == "openDispatchGallery" {
+            ReaderNavigationGestures.isOverGallery = message.body as? Bool ?? false
+            return
+        }
+        #endif
         if message.name == "openDispatchVideo" {
             media.record(message.body)
             return
@@ -399,6 +478,14 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         controller.add(ReaderWeakScriptHandler(self), contentWorld: world, name: "openDispatchVideo")
         controller.addUserScript(WKUserScript(source: ReaderHTML.videoScript, injectionTime: .atDocumentEnd,
                                               forMainFrameOnly: true, in: world))
+        controller.add(ReaderWeakScriptHandler(self), contentWorld: world, name: "openDispatchImage")
+        controller.addUserScript(WKUserScript(source: ReaderHTML.imageTapScript, injectionTime: .atDocumentEnd,
+                                              forMainFrameOnly: true, in: world))
+        #if os(macOS)
+        controller.add(ReaderWeakScriptHandler(self), contentWorld: world, name: "openDispatchGallery")
+        #endif
+        controller.addUserScript(WKUserScript(source: ReaderHTML.galleryScript, injectionTime: .atDocumentEnd,
+                                              forMainFrameOnly: true, in: world))
         bridge.install(in: config)
         speechPage?.install(in: controller, world: world)
         let webView = ReaderFittedWebView(frame: .zero, configuration: config)
@@ -413,9 +500,6 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         webView.extraMenuItems = { [weak self] in self?.menuItems() ?? [] }
         webView.topMenuItems = { [weak bridge] in bridge?.macMenuItems() ?? [] }
         #else
-        controller.add(ReaderWeakScriptHandler(self), contentWorld: world, name: "openDispatchImage")
-        controller.addUserScript(WKUserScript(source: ReaderHTML.imageTapScript, injectionTime: .atDocumentEnd,
-                                              forMainFrameOnly: true, in: world))
         webView.highlightMenu = { [weak bridge] in bridge?.editMenuElements() ?? [] }
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.bounces = false
@@ -465,6 +549,9 @@ final class ReaderArticleCoordinator: NSObject, WKNavigationDelegate, WKUIDelega
         if key != loadedKey {
             loadedKey = key
             pageLoaded = false
+            #if os(macOS)
+            ReaderNavigationGestures.isOverGallery = false
+            #endif
             self.appearance = appearance
             documentURL = baseURL
             bridge.pageWillLoad()
@@ -514,6 +601,7 @@ private struct ReaderArticleWebViewRepresentable: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ view: WKWebView, coordinator: ReaderArticleCoordinator) {
+        ReaderNavigationGestures.isOverGallery = false
         coordinator.speechPage?.documentWillChange()
         view.configuration.userContentController.removeAllScriptMessageHandlers()
         view.navigationDelegate = nil

@@ -1305,6 +1305,7 @@ Explore searches posts, and the reader shows comments under a thread and under e
 ### A post's video in the reader — 2026-10-30
 - `ReaderView.playsVideoAlone` (posts and Reddit threads): the web view is made with autoplay allowed (`.id` remakes it across the change, the setting being fixed at creation), and with Autoplay on select and `autoplayItemID` the first non-looping video plays with sound on load (`ReaderPostMedia.start`), or a leading YouTube player gets `autoplay=1` (`ReaderHTML.autoplayingPlayer`). Articles keep waiting for play.
 - `ReaderHTML.videoScript` reports positions to `ReaderPostMedia`, kept for the session by video address, so returning resumes there. `onDisappear` pauses all media; `dismantle` blanks the page, as a web view out of the window plays on until it is released.
+- An Instagram post with several pictures is `.x-gallery` (`TweetExtraction.galleryHTML`), not `.x-media-grid`: a row of whole pictures, one at a time, that `ReaderHTML.galleryScript` gives a count, arrows and a strip of thumbnails (`data-thumb`, or the picture itself). A click on a picture opens `ReaderImageViewer` on iPhone and iPad and `ReaderImageOverlay` on the Mac, with the rest of its gallery.
 - A lone video in `.x-media` is as big as its picture, centered, with its own 12pt corners; a box wider or taller than the picture left the corners on empty space. The "N of M sources muted" note over a folder's list is gone.
 
 ### One post frame, smaller titles — 2026-10-30

@@ -138,6 +138,58 @@ struct InstagramFeedTests {
         #expect(post.leadImage == "https://cdn.example/square.jpg")
     }
 
+    /// A carousel's page data as Instagram serves it: every size of each photo, the first being the photo's own.
+    private static func carouselPage(likes: String = #""like_count":4003719"#) -> String {
+        func photo(_ n: Int) -> String {
+            #"{"display_uri":"https://cdn.example/\#(n)-640.jpg","original_width":1177,"original_height":1365,"image_versions2":{"candidates":[{"url":"https://cdn.example/\#(n)-full.jpg"},{"url":"https://cdn.example/\#(n).jpg?stp=dst-jpg_p320x320_tt6"}]}}"#
+        }
+        return #"""
+            <html><head><meta property="og:image" content="https://cdn.example/square.jpg" /></head><body>
+            <script type="application/json">{"xig_polaris_media":{"if_not_gated_logged_out":{\#(likes),"taken_at":1793474361,"caption":{"text":"The caption"},
+              "user":{"username":"taylorswift","full_name":"Taylor Swift"},"carousel_media":[\#(photo(1)),\#(photo(2))]}}}</script></body></html>
+            """#
+    }
+
+    @Test func aCarouselUsesEachPhotosOwnSize() throws {
+        let post = try #require(PreviewTagPost.parse(html: Self.carouselPage(), canonical: "https://www.instagram.com/p/abc/", network: .instagram))
+        #expect(post.media.map(\.url) == ["https://cdn.example/1-full.jpg", "https://cdn.example/2-full.jpg"])
+        // The list keeps its small square, and the others their small copies for the strip.
+        #expect(post.leadImage == "https://cdn.example/square.jpg")
+        #expect(post.media[1].thumb == "https://cdn.example/2.jpg?stp=dst-jpg_p320x320_tt6")
+    }
+
+    @Test func aCarouselDrawsAsAGalleryWithThePicturesFirst() throws {
+        let post = try #require(PreviewTagPost.parse(html: Self.carouselPage(), canonical: "https://www.instagram.com/p/abc/", network: .instagram))
+        let html = try #require(post.render()?.contentHtml)
+        #expect(html.contains("x-gallery-track"))
+        #expect(!html.contains("x-media-grid"))
+        #expect(html.contains("data-thumb=\"https://cdn.example/2.jpg?stp=dst-jpg_p320x320_tt6\""))
+        #expect(html.contains("4M likes"))
+        let gallery = try #require(html.range(of: "x-gallery")), likes = try #require(html.range(of: "4M likes")), caption = try #require(html.range(of: "The caption"))
+        #expect(gallery.lowerBound < likes.lowerBound)
+        #expect(likes.lowerBound < caption.lowerBound)
+    }
+
+    @Test func hiddenOrNoLikesAreLeftOut() throws {
+        for likes in [#""like_count":0"#, #""like_count":5,"like_and_view_counts_disabled":true"#] {
+            let post = try #require(PreviewTagPost.parse(html: Self.carouselPage(likes: likes), canonical: "https://www.instagram.com/p/abc/", network: .instagram))
+            #expect(post.stats == nil)
+        }
+    }
+
+    @Test func onePhotoAndOtherNetworksKeepPlainMedia() throws {
+        let photo = SocialPost.Media(kind: .photo, url: "https://cdn.example/1.jpg")
+        let author = SocialPost.Author(name: "A", handle: "a")
+        let single = SocialPost(network: .instagram, url: "https://www.instagram.com/p/a/", author: author, paragraphs: ["Text"], media: [photo])
+        #expect(try #require(single.render()?.contentHtml).contains("x-media") && !(single.render()?.contentHtml?.contains("x-gallery") ?? true))
+        let threads = SocialPost(network: .threads, url: "https://www.threads.com/@a/post/b", author: author, paragraphs: ["First"], media: [photo, photo])
+        let html = try #require(threads.render()?.contentHtml)
+        #expect(html.contains("x-media-grid"))
+        #expect(!html.contains("x-gallery"))
+        let first = try #require(html.range(of: "First")), grid = try #require(html.range(of: "x-media-grid"))
+        #expect(first.lowerBound < grid.lowerBound)
+    }
+
     @Test func aPostsCommentsComeFromItsPage() throws {
         let canonical = "https://www.instagram.com/p/abc/"
         #expect(DiscussionPlace.thread(of: canonical) == .instagram)

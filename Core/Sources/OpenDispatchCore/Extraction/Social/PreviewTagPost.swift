@@ -96,11 +96,12 @@ enum PreviewTagPost {
             // The list's picture stays the small square.
             let thumb = media.first?.url
             media = found
-            media[0].thumb = thumb
+            media[0].thumb = thumb ?? media[0].thumb
         }
         guard !paragraphs.isEmpty || !media.isEmpty else { return nil }
         let profile = network == .threads ? "https://www.threads.com/@\(handle)" : "https://www.instagram.com/\(handle)/"
         return SocialPost(network: network, url: canonical, author: .init(name: name ?? handle, handle: handle, avatar: data?.avatar, profile: profile),
-                          paragraphs: paragraphs, date: date, media: media)
+                          paragraphs: paragraphs, date: date, media: media,
+                          stats: data?.likes.flatMap { $0 > 0 ? EmbeddedPosts.count($0, "like") : nil })
     }
 }

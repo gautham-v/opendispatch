@@ -193,16 +193,26 @@ enum TweetExtraction {
     /// Media under the text: photos as images, videos with controls, GIFs as muted loops.
     static func mediaHTML(_ media: [Media]) -> String {
         guard !media.isEmpty else { return "" }
-        let items = media.map { m -> String in
-            let size = [m.width.map { " width=\"\($0)\"" }, m.height.map { " height=\"\($0)\"" }].compactMap { $0 }.joined()
-            let poster = m.poster.map { " poster=\"\(DOM.escapeAttr($0))\"" } ?? ""
-            switch m.kind {
-            case .photo: return "<img src=\"\(DOM.escapeAttr(m.url))\" alt=\"\(DOM.escapeAttr(m.alt ?? ""))\"\(size)>"
-            case .video: return "<video src=\"\(DOM.escapeAttr(m.url))\"\(poster)\(size) playsinline></video>"
-            case .gif: return "<video src=\"\(DOM.escapeAttr(m.url))\"\(poster)\(size) autoplay loop muted playsinline></video>"
-            }
+        return "<div class=\"x-media\(media.count > 1 ? " x-media-grid" : "")\">\(media.map { itemHTML($0) }.joined())</div>"
+    }
+
+    /// Several photos as one big picture at a time, whole, over a strip of all of them. `ReaderHTML.galleryScript` adds the strip,
+    /// from each photo's `data-thumb`, and the arrows; without it the row still scrolls sideways. One item is a plain `mediaHTML`.
+    static func galleryHTML(_ media: [Media]) -> String {
+        guard media.count > 1 else { return mediaHTML(media) }
+        return "<div class=\"x-gallery\"><div class=\"x-gallery-track\">\(media.map { itemHTML($0, thumb: true) }.joined())</div></div>"
+    }
+
+    private static func itemHTML(_ m: Media, thumb: Bool = false) -> String {
+        let size = [m.width.map { " width=\"\($0)\"" }, m.height.map { " height=\"\($0)\"" }].compactMap { $0 }.joined()
+        let poster = m.poster.map { " poster=\"\(DOM.escapeAttr($0))\"" } ?? ""
+        switch m.kind {
+        case .photo:
+            let small = thumb ? m.thumb.map { " data-thumb=\"\(DOM.escapeAttr($0))\"" } ?? "" : ""
+            return "<img src=\"\(DOM.escapeAttr(m.url))\" alt=\"\(DOM.escapeAttr(m.alt ?? ""))\"\(size)\(small)>"
+        case .video: return "<video src=\"\(DOM.escapeAttr(m.url))\"\(poster)\(size) playsinline></video>"
+        case .gif: return "<video src=\"\(DOM.escapeAttr(m.url))\"\(poster)\(size) autoplay loop muted playsinline></video>"
         }
-        return "<div class=\"x-media\(media.count > 1 ? " x-media-grid" : "")\">\(items.joined())</div>"
     }
 
     /// Post text with the t.co links X appends for attached media removed (they are not among the post's links).
@@ -238,8 +248,9 @@ enum TweetExtraction {
     }
 
     /// The footer: when the post went up, and `stats` where a post shows them. (The reader's toolbar opens the post on its network.)
-    static func footHTML(date: Date?, stats: String? = nil) -> String {
-        let spans = [date.map(stampLine), stats].compactMap { $0 }.map { "<span>\(DOM.escapeHTML($0))</span>" }
+    static func footHTML(date: Date?, stats: String? = nil, statsFirst: Bool = false) -> String {
+        let parts = [date.map(stampLine), stats]
+        let spans = (statsFirst ? parts.reversed() : parts).compactMap { $0 }.map { "<span>\(DOM.escapeHTML($0))</span>" }
         return spans.isEmpty ? "" : "<div class=\"x-foot\">\(spans.joined())</div>"
     }
 

@@ -58,7 +58,7 @@ public enum ArticleSanitizer {
     static let allowedAttributes: [String: Set<String>] = {
         var map: [String: Set<String>] = [
             "a": ["href", "title", "target", "rel"],
-            "img": ["src", "srcset", "sizes", "alt", "title", "width", "height", "loading"],
+            "img": ["src", "srcset", "sizes", "alt", "title", "width", "height", "loading", "data-thumb"],
             "video": ["src", "controls", "poster", "width", "height", "autoplay", "loop", "muted", "playsinline", "preload"],
             "source": ["src", "srcset", "sizes", "media", "type", "width", "height"],
             "iframe": ["src", "width", "height", "allow", "allowfullscreen", "frameborder"],

@@ -55,6 +55,8 @@ struct SocialPost {
     var media: [Media] = []
     var card: Card?
     var quote: Quote?
+    /// Counts for the footer ("4M likes"), where the network gives them.
+    var stats: String?
 
     // MARK: Item fields
 
@@ -102,7 +104,8 @@ struct SocialPost {
         paragraphs.isEmpty ? "" : "<div class=\"x-body\">\(paragraphs.map(TweetExtraction.paragraphHTML).joined())</div>"
     }
 
-    /// The reader markup: author row, text, media, the quoted post, the link card, a footer.
+    /// The reader markup: author row, text, media, the quoted post, the link card, a footer. An Instagram post is its pictures, so
+    /// they come first, as on Instagram, with the likes and date under them and the caption last.
     func render() -> ExtractResult? {
         var quoted = ""
         if let q = quote {
@@ -111,10 +114,11 @@ struct SocialPost {
         var cardHTML = ""
         if let c = card { cardHTML = TweetExtraction.cardHTML(href: c.href, title: c.title, domain: c.domain, image: c.image) }
         guard !paragraphs.isEmpty || !media.isEmpty || quote != nil || card != nil else { return nil }
-        let foot = TweetExtraction.footHTML(date: date)
-        let html = ArticleSanitizer.sanitize(
-            "<div class=\"x-post\">\(TweetExtraction.whoHTML(user(author), date: nil, profile: author.profile))\(Self.bodyHTML(paragraphs))\(TweetExtraction.mediaHTML(media))\(quoted)\(cardHTML)\(foot)</div>"
-        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        let who = TweetExtraction.whoHTML(user(author), date: nil, profile: author.profile)
+        let inner = network == .instagram
+            ? who + TweetExtraction.galleryHTML(media) + TweetExtraction.footHTML(date: date, stats: stats, statsFirst: true) + Self.bodyHTML(paragraphs)
+            : who + Self.bodyHTML(paragraphs) + TweetExtraction.mediaHTML(media) + quoted + cardHTML + TweetExtraction.footHTML(date: date, stats: stats)
+        let html = ArticleSanitizer.sanitize("<div class=\"x-post\">\(inner)</div>").trimmingCharacters(in: .whitespacesAndNewlines)
         return html.isEmpty ? nil : ExtractResult(contentHtml: html, leadImage: leadImage)
     }
 

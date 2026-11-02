@@ -385,13 +385,36 @@ body { overflow-y: hidden; }
 .prose-opendispatch .x-media img,
 .prose-opendispatch .x-media video { width: 100%; margin: 0; border-radius: 0; }
 .prose-opendispatch .x-media-grid img,
-.prose-opendispatch .x-media-grid video { height: 100%; aspect-ratio: 1; object-fit: cover; }
+.prose-opendispatch .x-media-grid video { height: auto; aspect-ratio: 1; object-fit: cover; }
 /* A lone picture or video is as big as its picture, centered, so the corners are the picture's: a box wider or taller
    than the picture left them on empty space. */
 .prose-opendispatch .x-media:not(.x-media-grid):has(> video, > img) { justify-items: center; overflow: visible; outline: none; }
 .prose-opendispatch .x-media:not(.x-media-grid) > video,
 .prose-opendispatch .x-media:not(.x-media-grid) > img { width: auto; height: auto; max-width: 100%; max-height: 560px; border-radius: 12px; }
 .prose-opendispatch .x-media:not(.x-media-grid) > video { background: #000; }
+/* An Instagram post's photos: one at a time, whole, over a strip of all of them (`ReaderHTML.galleryScript`). The row is as tall as its
+   tallest photo, so it holds still from photo to photo and a shorter one sits centered on black. */
+.prose-opendispatch .x-gallery { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.prose-opendispatch .x-gallery-stage { position: relative; min-width: 0; }
+.prose-opendispatch .x-gallery-track { display: flex; align-items: center; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; background: #000; border-radius: 12px; }
+.prose-opendispatch .x-gallery-track::-webkit-scrollbar { display: none; }
+.prose-opendispatch .x-gallery-track > img,
+.prose-opendispatch .x-gallery-track > video { flex: 0 0 100%; min-width: 0; width: 100%; height: auto; max-width: none; max-height: 720px; margin: 0; border-radius: 0; object-fit: contain; scroll-snap-align: center; scroll-snap-stop: always; }
+.prose-opendispatch .x-gallery-stage::after { content: attr(data-count); position: absolute; top: 10px; right: 10px; padding: 2px 8px; border-radius: 6px; background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.prose-opendispatch .x-gallery-arrow { position: absolute; top: 50%; width: 30px; height: 30px; margin: -15px 0 0; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.9); color: #111; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); opacity: 0; cursor: pointer; transition: opacity 0.12s; }
+.prose-opendispatch .x-gallery-prev { left: 10px; }
+.prose-opendispatch .x-gallery-next { right: 10px; }
+.prose-opendispatch .x-gallery-stage:hover .x-gallery-arrow { opacity: 1; }
+.prose-opendispatch .x-gallery-stage .x-gallery-arrow[disabled] { opacity: 0; pointer-events: none; }
+@media (hover: none) { .prose-opendispatch .x-gallery-arrow { display: none; } }
+.prose-opendispatch .x-strip { display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none; }
+.prose-opendispatch .x-strip::-webkit-scrollbar { display: none; }
+.prose-opendispatch .x-strip img { flex: none; width: 54px; height: 62px; max-width: none; margin: 0; border-radius: 6px; object-fit: cover; opacity: 0.55; cursor: pointer; }
+.prose-opendispatch .x-strip img:hover { opacity: 0.8; }
+.prose-opendispatch .x-strip img.x-on { opacity: 1; outline: 2px solid var(--ink); outline-offset: -2px; }
+/* The likes and date sit right under the pictures, not as a footer. */
+.prose-opendispatch .x-gallery + .x-foot,
+.prose-opendispatch .x-media + .x-foot { padding-top: 0; border-top: 0; }
 .prose-opendispatch .x-quote { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; font-size: 0.92em; }
 .prose-opendispatch .x-quote-link { font-size: 13px; color: var(--muted); text-decoration: none; }
 .prose-opendispatch .x-quote-link:hover { text-decoration: underline; }

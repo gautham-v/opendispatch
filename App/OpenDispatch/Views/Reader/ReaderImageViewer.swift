@@ -1,6 +1,8 @@
 import SwiftUI
 #if os(iOS)
 import UIKit
+#else
+import AppKit
 #endif
 
 /// The images of an article or post, opened from a tap on one (`ReaderHTML.imageTapScript`).
@@ -239,6 +241,252 @@ final class ReaderZoomScrollView: UIScrollView, UIScrollViewDelegate {
         let pull = pullDistance
         guard atFit, pull > 90 || (pull > 30 && abs(velocity.y) > 1.2) else { return }
         onDismiss?()
+    }
+}
+#endif
+
+#if os(macOS)
+/// The Mac's full-window images, laid over the window that asked: arrows, ← → or a sideways scroll to move, a click on the photo to
+/// zoom toward the pointer, Esc, Space, ⌘W, the close button or a click outside the photo to go back. While it is up it takes the
+/// keyboard and the scroll wheel, so nothing moves behind it.
+@MainActor
+enum ReaderImageOverlay {
+    private static var host: NSView?
+    private static var monitor: Any?
+    private static var restoredResponder: NSResponder?
+    private static var sideways: CGFloat = 0
+    /// This trackpad swipe has moved its one photo.
+    private static var swiped = false
+    private static let swipeDistance: CGFloat = 60
+
+    static var isOpen: Bool { host != nil }
+
+    static func present(_ gallery: ReaderImageGallery, in window: NSWindow) {
+        close()
+        guard let content = window.contentView else { return }
+        let state = ReaderMacViewerState(gallery: gallery)
+        let view = NSHostingView(rootView: ReaderMacImageViewer(state: state, onClose: { close() }))
+        view.frame = content.bounds
+        view.autoresizingMask = [.width, .height]
+        content.addSubview(view, positioned: .above, relativeTo: nil)
+        host = view
+        restoredResponder = window.firstResponder
+        window.makeFirstResponder(view)
+        sideways = 0
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .scrollWheel, .swipe]) { event in
+            MainActor.assumeIsolated { handle(event, state: state, window: window) } ? nil : event
+        }
+    }
+
+    static func close() {
+        guard let view = host else { return }
+        let window = view.window
+        view.removeFromSuperview()
+        host = nil
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        if let restoredResponder { window?.makeFirstResponder(restoredResponder) }
+        restoredResponder = nil
+    }
+
+    /// True when the event was the viewer's.
+    private static func handle(_ event: NSEvent, state: ReaderMacViewerState, window: NSWindow) -> Bool {
+        guard host?.window === window else {
+            close()
+            return false
+        }
+        guard event.window === window else { return false }
+        switch event.type {
+        case .keyDown:
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if flags.contains(.command) {
+                guard event.charactersIgnoringModifiers?.lowercased() == "w" else { return false }
+                close()
+                return true
+            }
+            switch event.keyCode {
+            case 53, 49: close()
+            case 123: state.move(-1)
+            case 124: state.move(1)
+            default: break
+            }
+            return true
+        case .swipe:
+            if event.deltaX != 0 { state.move(event.deltaX < 0 ? -1 : 1) }
+            return true
+        case .scrollWheel:
+            if event.phase == .began {
+                sideways = 0
+                swiped = false
+            }
+            guard event.momentumPhase.isEmpty else { return true }
+            sideways += event.scrollingDeltaX
+            if !swiped, abs(sideways) > swipeDistance, !state.isZoomed {
+                let back = event.isDirectionInvertedFromDevice ? sideways > 0 : sideways < 0
+                state.move(back ? -1 : 1)
+                sideways = 0
+                swiped = !event.phase.isEmpty
+            }
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+@MainActor @Observable
+private final class ReaderMacViewerState {
+    let gallery: ReaderImageGallery
+    private(set) var index: Int
+    var isZoomed = false
+    /// Photos loaded so far, and the ones that wouldn't.
+    private(set) var images: [URL: NSImage] = [:]
+    private(set) var failed: Set<URL> = []
+    @ObservationIgnored private var loading: Set<URL> = []
+
+    init(gallery: ReaderImageGallery) {
+        self.gallery = gallery
+        index = gallery.index
+        loadAround()
+    }
+
+    var url: URL { gallery.urls[index] }
+    var canGoBack: Bool { index > 0 }
+    var canGoForward: Bool { index < gallery.urls.count - 1 }
+
+    func move(_ by: Int) {
+        let next = index + by
+        guard gallery.urls.indices.contains(next) else { return }
+        index = next
+        isZoomed = false
+        loadAround()
+    }
+
+    /// This photo and its neighbours, so moving on shows the next one at once.
+    private func loadAround() {
+        for i in [index, index + 1, index - 1] where gallery.urls.indices.contains(i) { load(gallery.urls[i]) }
+    }
+
+    private func load(_ url: URL) {
+        guard images[url] == nil, !failed.contains(url), loading.insert(url).inserted else { return }
+        Task { [weak self] in
+            for source in ReaderImageGallery.sources(for: url) {
+                var request = URLRequest(url: source, timeoutInterval: 30)
+                request.setValue("image/*", forHTTPHeaderField: "Accept")
+                guard let loaded = try? await URLSession.shared.data(for: request),
+                      (loaded.1 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
+                      let image = NSImage(data: loaded.0) else { continue }
+                self?.images[url] = image
+                self?.loading.remove(url)
+                return
+            }
+            self?.failed.insert(url)
+            self?.loading.remove(url)
+        }
+    }
+}
+
+private struct ReaderMacImageViewer: View {
+    let state: ReaderMacViewerState
+    let onClose: () -> Void
+
+    /// How far a click zooms, and where in the photo the pointer holds still.
+    private static let zoom: CGFloat = 2.4
+    @State private var anchor: UnitPoint = .center
+
+    var body: some View {
+        ZStack {
+            Color.black
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onClose)
+            photo
+                .padding(.horizontal, 64)
+                .padding(.vertical, 48)
+            controls
+        }
+        .ignoresSafeArea()
+        .accessibilityAddTraits(.isModal)
+    }
+
+    @ViewBuilder private var photo: some View {
+        if let image = state.images[state.url] {
+            GeometryReader { box in
+                let fitted = Self.fit(image.size, in: box.size)
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: fitted.width, height: fitted.height)
+                    .scaleEffect(state.isZoomed ? Self.zoom : 1, anchor: anchor)
+                    .contentShape(Rectangle())
+                    .onContinuousHover(coordinateSpace: .local) { phase in
+                        if case .active(let at) = phase {
+                            anchor = UnitPoint(x: at.x / max(fitted.width, 1), y: at.y / max(fitted.height, 1))
+                        }
+                    }
+                    .onTapGesture { state.isZoomed.toggle() }
+                    .pointerStyle(state.isZoomed ? .zoomOut : .zoomIn)
+                    .animation(.easeOut(duration: 0.16), value: state.isZoomed)
+                    .position(x: box.size.width / 2, y: box.size.height / 2)
+                    .accessibilityLabel("Photo \(state.index + 1) of \(state.gallery.urls.count)")
+            }
+        } else if state.failed.contains(state.url) {
+            Text("This photo couldn\u{2019}t be loaded.")
+                .foregroundStyle(.white.opacity(0.7))
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .tint(.white)
+        }
+    }
+
+    /// `size` shown whole inside `box`, up to twice its own size for a small picture.
+    private static func fit(_ size: CGSize, in box: CGSize) -> CGSize {
+        guard size.width > 0, size.height > 0 else { return box }
+        let scale = min(box.width / size.width, box.height / size.height, 2)
+        return CGSize(width: size.width * scale, height: size.height * scale)
+    }
+
+    private var controls: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                round("xmark", label: "Close", action: onClose)
+            }
+            Spacer()
+            HStack {
+                if state.gallery.urls.count > 1 {
+                    round("chevron.left", label: "Previous photo") { state.move(-1) }
+                        .opacity(state.canGoBack ? 1 : 0)
+                        .disabled(!state.canGoBack)
+                    Spacer()
+                    round("chevron.right", label: "Next photo") { state.move(1) }
+                        .opacity(state.canGoForward ? 1 : 0)
+                        .disabled(!state.canGoForward)
+                }
+            }
+            Spacer()
+            if state.gallery.urls.count > 1 {
+                Text("\(state.index + 1) of \(state.gallery.urls.count)")
+                    .font(.system(size: 13, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(.white.opacity(0.85))
+                    .allowsHitTesting(false)
+            }
+        }
+        .padding(14)
+    }
+
+    private func round(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .background(.white.opacity(0.16), in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 }
 #endif

@@ -251,7 +251,7 @@ private final class FeedKeyMonitor {
 
     private func handleKey(_ event: NSEvent) -> Bool {
         guard let window, event.window === window, window.attachedSheet == nil, window.isKeyWindow,
-              isSuspended?() != true else { return false }
+              isSuspended?() != true, !ReaderImageOverlay.isOpen else { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if !flags.intersection([.command, .control, .option]).isEmpty {
             return KeyCombo(event: event).flatMap { onCombo?($0) } ?? false

@@ -7,15 +7,18 @@ import SwiftUI
 /// a three-finger swipe when that is the setting, and a mouse's back and forward buttons (buttons 4 and 5).
 ///
 /// One local event monitor for the app's windows. A scroll that starts mostly sideways becomes the swipe only when there
-/// is somewhere to go that way, so horizontal scrolling elsewhere (a wide code block) still works when there isn't.
+/// is somewhere to go that way, so horizontal scrolling elsewhere (a wide code block) still works when there isn't. Over a post's
+/// photos it moves the photos, and an open image viewer takes all of it.
 @MainActor
 final class ReaderNavigationGestures {
     private var monitor: Any?
+    /// The pointer is over a post's gallery, as its page reports (`ReaderHTML.galleryScript`).
+    static var isOverGallery = false
 
     func install(_ model: AppModel) {
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .swipe, .otherMouseUp]) { [weak model] event in
-            guard let model, event.window?.attachedSheet == nil else { return event }
+            guard let model, event.window?.attachedSheet == nil, !ReaderImageOverlay.isOpen else { return event }
             switch event.type {
             case .otherMouseUp:
                 // Button numbers count from 0: 3 is a mouse's back button, 4 its forward button.
@@ -37,7 +40,7 @@ final class ReaderNavigationGestures {
 
     /// Starts tracking a two-finger swipe from the first event of a sideways scroll; true when it did.
     private static func trackSwipe(_ event: NSEvent, _ model: AppModel) -> Bool {
-        guard event.phase == .began, NSEvent.isSwipeTrackingFromScrollEventsEnabled,
+        guard !isOverGallery, event.phase == .began, NSEvent.isSwipeTrackingFromScrollEventsEnabled,
               abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) * 1.5 else { return false }
         // Fingers moving right mean back. With natural scrolling the delta follows the fingers; without it, it's reversed.
         let back = event.isDirectionInvertedFromDevice ? event.scrollingDeltaX > 0 : event.scrollingDeltaX < 0

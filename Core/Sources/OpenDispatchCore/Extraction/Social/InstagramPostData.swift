@@ -12,6 +12,7 @@ struct InstagramPostData {
     var caption: String?
     var date: Date?
     var media: [Media] = []
+    var likes: Int?
     var commentCount: Int?
     var comments: [DiscussionEntry] = []
 
@@ -30,6 +31,7 @@ struct InstagramPostData {
         out.caption = (post?["caption"] as? [String: Any])?["text"] as? String
         out.date = (post?["taken_at"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
         out.commentCount = (post?["comment_count"] as? NSNumber)?.intValue
+        if post?["like_and_view_counts_disabled"] as? Bool != true { out.likes = (post?["like_count"] as? NSNumber)?.intValue }
         if let post { out.media = media(of: post) }
         let edges = (data["comments_connection"] as? [String: Any])?["edges"] as? [[String: Any]] ?? []
         out.comments = edges.compactMap { ($0["node"] as? [String: Any]).flatMap { comment($0, postHandle: out.handle, canonical: canonical) } }
@@ -68,14 +70,20 @@ struct InstagramPostData {
     }
 
     private static func item(_ media: [String: Any]) -> Media? {
-        let candidates = (media["image_versions2"] as? [String: Any])?["candidates"] as? [[String: Any]]
-        let picture = (media["display_uri"] as? String) ?? candidates?.first?["url"] as? String
+        // The candidates start at the picture's own size; `display_uri` is the copy at most 640 tall, which looks soft in a wide column.
+        let candidates = ((media["image_versions2"] as? [String: Any])?["candidates"] as? [[String: Any]])?.compactMap { $0["url"] as? String } ?? []
+        let picture = candidates.first ?? media["display_uri"] as? String
         let width = (media["original_width"] as? NSNumber)?.intValue
         let height = (media["original_height"] as? NSNumber)?.intValue
         if let video = (media["video_versions"] as? [[String: Any]])?.first?["url"] as? String {
             return Media(kind: .video, url: video, poster: picture, width: width, height: height)
         }
-        return picture.map { Media(kind: .photo, url: $0, width: width, height: height) }
+        return picture.map {
+            var photo = Media(kind: .photo, url: $0, width: width, height: height)
+            // The whole picture's copies come before the square crops.
+            photo.thumb = candidates.first { $0.contains("320x320") }
+            return photo
+        }
     }
 
     private static func comment(_ node: [String: Any], postHandle: String?, canonical: String) -> DiscussionEntry? {
