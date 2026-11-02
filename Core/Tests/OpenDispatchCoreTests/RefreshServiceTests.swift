@@ -462,6 +462,55 @@ struct RefreshServiceTests {
         #expect(try await svc.refreshUnfetched { _ in }.isEmpty)
     }
 
+    @Test func aRefreshThatReachedNothingDoesNotCountAsOne() async throws {
+        let db = try Fixture.db()
+        try Fixture.source(db)
+        let earlier = Date().addingTimeInterval(-3600)
+        try await db.writer.write { try Queries.setLastRefreshAt($0, earlier) }
+        let svc = makeService(db) { _ in throw HTTPError.status(500) }
+
+        #expect(try await svc.refreshAll(force: false).ran)
+        #expect(try await db.lastRefreshAt().map { abs($0.timeIntervalSince(earlier)) < 1 } == true)
+        #expect(try await svc.refreshAll(force: false).ran)
+    }
+
+    @Test func aCancelledRefreshDoesNotCountAsOne() async throws {
+        let db = try Fixture.db()
+        try Fixture.source(db)
+        let svc = makeService(db) { _ in
+            try await Task.sleep(for: .seconds(30))
+            return RefreshFixture.rss([])
+        }
+
+        let pass = Task { try await svc.refreshAll(force: false) }
+        while try await db.lastRefreshAt() == nil { try await Task.sleep(for: .milliseconds(5)) }
+        pass.cancel()
+        #expect(try await pass.value.ran)
+        #expect(try await db.lastRefreshAt() == nil)
+    }
+
+    @Test func aPartlyFailedRefreshStillCounts() async throws {
+        let db = try Fixture.db()
+        try Fixture.source(db)
+        try Fixture.source(db, feedUrl: "https://down.example.com/feed")
+        let svc = makeService(db) { url in
+            if url.contains("down.") { throw HTTPError.status(500) }
+            return RefreshFixture.rss([])
+        }
+        #expect(try await svc.refreshAll(force: false).ran)
+        #expect(try await !svc.refreshAll(force: false).ran)
+    }
+
+    @Test func theNewestItemIDIsObserved() async throws {
+        let db = try Fixture.db()
+        let source = try Fixture.source(db)
+        let svc = makeService(db) { _ in RefreshFixture.rss([.init(guid: "a", link: "https://blog.example.com/a", title: "A")]) }
+        var values = db.observeNewestItemID().makeAsyncIterator()
+        #expect(try await values.next() == .some(nil))
+        _ = try await svc.refreshSource(id: source.id)
+        #expect(try await values.next() != .some(nil))
+    }
+
     @Test func concurrentCallsClaimOnce() async throws {
         let db = try Fixture.db()
         try Fixture.source(db)

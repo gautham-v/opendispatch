@@ -2,6 +2,7 @@ import Foundation
 import OpenDispatchCore
 #if os(iOS)
 import BackgroundTasks
+import UIKit
 #endif
 
 /// iOS background app refresh (BGAppRefreshTask "com.gauthamv.openfeed.refresh"). The SwiftUI scene
@@ -21,6 +22,18 @@ enum BackgroundRefresh {
         #endif
     }
 
+    /// Runs `work` so that leaving the app doesn't freeze it halfway: iOS gives it about 30 more seconds, and cancels it if
+    /// that runs out. Being cancelled itself (the view that asked went away) doesn't stop it. Elsewhere it just runs.
+    @MainActor
+    static func finishing<T: Sendable>(_ work: @escaping @Sendable () async throws -> T) async throws -> T {
+        let task = Task { try await work() }
+        #if os(iOS)
+        let grant = BackgroundGrant { task.cancel() }
+        defer { grant.end() }
+        #endif
+        return try await task.value
+    }
+
     /// Body of the background task: schedule the next one, then a non-forced refresh and its notifications.
     static func run(_ services: OpenDispatchServices) async {
         schedule()
@@ -29,3 +42,24 @@ enum BackgroundRefresh {
         }
     }
 }
+
+#if os(iOS)
+/// iOS's extra time after the app leaves the foreground; `expired` runs when it's up.
+@MainActor
+private final class BackgroundGrant {
+    private var id = UIBackgroundTaskIdentifier.invalid
+
+    init(expired: @escaping @MainActor @Sendable () -> Void) {
+        id = UIApplication.shared.beginBackgroundTask(withName: "Refresh") { [weak self] in
+            expired()
+            self?.end()
+        }
+    }
+
+    func end() {
+        guard id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(id)
+        id = .invalid
+    }
+}
+#endif

@@ -1052,7 +1052,7 @@ Retry extraction (`?refresh=1`): failure-state button and the headline context m
 
 ### Integration — 2026-10-25
 - `AppModel.refresh(force:)` uses the progress API: `.started` sets `lastRefreshAt` (header says "updated just now"
-  immediately); on a first launch with an empty list, the first source that adds items triggers `loadItems`.
+  immediately). Items reach the list through `AppModel.listItemsAsStored`, which observes the newest item id.
 - Deep link `opendispatch://add?url=<url>`: `CFBundleURLTypes` in project.yml, `RootView.onOpenURL` →
   `AppModel.handleOpenURL(_:)` sets `pendingAddSourceURL` and presents Add source; `AddSourceView` prefills from it.
   `opendispatch://settings?tab=<sources|appearance|playback|integrations|data|about>` calls `showSettings(_:)`.
@@ -1177,7 +1177,7 @@ Matching got stricter and news coverage groups into stories. Migration `v9-topic
   A post on X or Bluesky (`x:` / `bsky:` guid) joins when an address in its text equals an article's, else the story of the article it matches best within 3 days by
   `TopicStories.postOverlaps` (3+ shared words carrying 0.45, weighed over every grouped title, posts included), since most of a topic's posts reshare the day's articles. Posts and
   threads never lead a story or move its `story_at`; `repairStories` leaves them rows of their own when no article of their story is left.
-  `AppDatabase.tidyTopics()` runs the cleanup and the grouping for every topic without searching; `AppModel.start()` calls it at launch, so a topic stored by an older build is tidied at once. The topic list shows
+  `AppDatabase.tidyTopics()` runs the cleanup and the grouping for every topic without searching; `AppModel.start()` calls it once per build, after the list is up (it takes seconds and holds up other writes), so a topic stored by an older build is tidied at once. The topic list shows
   `story_id IS NULL` rows only and sorts and pages by `coalesce(story_at, published_at)` (`FeedItem.cursor(inTopic:)` is that time in a topic's list and the item's own `published_at` in every other list, Saved included, so the cursor always matches the query's ORDER BY). `FeedItem.story` (`TopicStory`: `outlets`, lead first, then newest
   first, each with name, headline, url, host, id; `discussion`: the thread with most points) is attached to a page by one extra query and only on a lead with something behind it.
   Removing a lead (retention, cleanup) passes the story to its oldest remaining article (`Queries.repairStories`); a thread left alone is a row again. A read lead's mark is carried over:

@@ -96,7 +96,7 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
             let last = try Queries.lastRefreshAt(db)
             if !force && !RelativeTime.isStale(last, now: now) { return (false, last) }
             try Queries.setLastRefreshAt(db, now)
-            return (true, now)
+            return (true, last)
         }
         guard claim.ran else {
             let r = RefreshResult(ran: false, lastRefreshAt: claim.last)
@@ -109,11 +109,34 @@ public struct DefaultRefreshService: RefreshService, RefreshProgressReporting {
 
         let results = await fetchAll(all, progress: progress)
 
+        // Cut short (iOS took the time back) or nothing reachable: this wasn't a refresh, so the next chance tries again
+        // rather than waiting out the 15 minutes.
+        let cancelled = Task.isCancelled
+        if cancelled || (!results.isEmpty && results.allSatisfy { !$0.ok }) {
+            await releaseClaim(now, restoring: claim.last)
+        }
+        if cancelled {
+            let result = RefreshResult(ran: true, lastRefreshAt: claim.last, results: results)
+            progress(.finished(result))
+            return result
+        }
+
         let pruned = try await database.pruneOldItems()
         await checkVideos(sourceIds: Self.fetchedVideoSources(all, results), storedSince: now)
         let result = RefreshResult(ran: true, lastRefreshAt: now, results: results, pruned: pruned)
         progress(.finished(result))
         return result
+    }
+
+    /// Gives back the slot taken at `claimed`, unless a later refresh has taken it since. In a task of its own: a cancelled
+    /// task's database writes are refused.
+    private func releaseClaim(_ claimed: Date, restoring previous: Date?) async {
+        await Task.detached { [database] in
+            try? await database.writer.write { db in
+                guard try Queries.meta(db, MetaKey.lastRefreshAt) == ISO8601.string(from: claimed) else { return }
+                try Queries.setMeta(db, MetaKey.lastRefreshAt, previous.map { ISO8601.string(from: $0) })
+            }
+        }.value
     }
 
     @discardableResult

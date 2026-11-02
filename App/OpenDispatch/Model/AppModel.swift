@@ -304,6 +304,9 @@ final class AppModel {
     private(set) var lastRefreshAt: Date?
     private(set) var isRefreshing = false
     private var syncedSourcesWaiting = false
+    /// A refresh was asked for during one. That one may be left over from before the app was suspended, so it's asked again
+    /// when it ends, and the 15-minute rule says whether there's anything to do.
+    private var refreshAgain = false
     private(set) var lastRefreshResult: RefreshResult?
     private(set) var integrations = IntegrationsState()
     /// Bumped per item by Reload Article; the reader showing that item re-extracts when it changes.
@@ -459,13 +462,13 @@ final class AppModel {
         appIcon.showInDock()
         // Read first and alongside the rest: a restored X post waits on it for its replies.
         let signIns = Task { await accounts.refresh() }
-        // Topics stored by an older build, or before their rules last changed, match today's rules before anything lists them.
-        _ = try? await database.tidyTopics()
         await loadSources()
         await topicStore.reload()
         libraryLoaded = true
         libraryDidChange()
         await loadItems(reset: true)
+        listItemsAsStored()
+        Task { await tidyTopicsAfterUpdate() }
         await restorePinnedTabs()
         await loadStats()
         await loadIntegrations()
@@ -476,6 +479,17 @@ final class AppModel {
         Task { await startSync() }
         await refresh(force: false)
         await prefetcher.queueSaved()
+    }
+
+    /// Topics stored by an older build match today's rules. Once per build and after the list is up: it holds up every other
+    /// write for seconds, and a topic's refresh applies the same rules anyway.
+    private func tidyTopicsAfterUpdate() async {
+        let key = "openfeed.topics-tidied-build"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        guard UserDefaults.standard.string(forKey: key) != build else { return }
+        _ = try? await database.tidyTopics()
+        UserDefaults.standard.set(build, forKey: key)
+        await loadItems(reset: true, keepingDepth: true, countsNewRows: false)
     }
 
     // MARK: Derived
@@ -1047,12 +1061,28 @@ final class AppModel {
 
     /// Fetch feeds (forced, or when the last refresh is older than 15 min), then reload what changed.
     func refresh(force: Bool) async {
-        guard !isRefreshing else { return }
+        guard !isRefreshing else {
+            refreshAgain = true
+            return
+        }
         isRefreshing = true
         defer { isRefreshing = false }
+        var force = force
+        repeat {
+            refreshAgain = false
+            await refreshPass(force: force)
+            force = false
+        } while refreshAgain
+        await fetchUnfetchedSources()
+    }
+
+    private func refreshPass(force: Bool) async {
         do {
-            let r = try await services.refresh.refreshAll(force: force) { [weak self] event in
-                Task { @MainActor in self?.handleRefreshProgress(event) }
+            let refresher = services.refresh
+            let r = try await BackgroundRefresh.finishing { [weak self] in
+                try await refresher.refreshAll(force: force) { event in
+                    Task { @MainActor in self?.handleRefreshProgress(event) }
+                }
             }
             lastRefreshResult = r
             if r.ran { await PostNotifications.deliver(database) }
@@ -1065,7 +1095,23 @@ final class AppModel {
         } catch {
             await loadStats()
         }
-        await fetchUnfetchedSources()
+    }
+
+    /// Lists items as they are stored, whoever stored them: a refresh takes a while and each source lands when it's read, and
+    /// the background task stores items with nothing on screen to tell. Reloads at most this often.
+    private func listItemsAsStored() {
+        Task { [weak self, database] in
+            var isFirst = true
+            for try await _ in database.observeNewestItemID() {
+                guard !isFirst else {
+                    isFirst = false
+                    continue
+                }
+                guard let self else { return }
+                await self.loadItems(reset: true, keepingDepth: true)
+                try await Task.sleep(for: .seconds(2))
+            }
+        }
     }
 
     /// Sources never fetched here, which iCloud brought without items. They aren't left for the next refresh that's due; those
@@ -1095,19 +1141,9 @@ final class AppModel {
         articleReloads[item.id, default: 0] += 1
     }
 
-    /// Live refresh progress: "updated just now" as soon as a refresh starts, and on a first launch
-    /// (empty list) the first items appear as soon as one source has added some.
+    /// Live refresh progress: "updated just now" as soon as a refresh starts.
     private func handleRefreshProgress(_ event: RefreshProgress) {
-        switch event {
-        case .started(let at, _):
-            lastRefreshAt = at
-        case .sourceFinished(let result, _, _):
-            if result.added > 0, items.isEmpty, !isLoading {
-                Task { await self.loadItems(reset: true) }
-            }
-        case .finished:
-            break
-        }
+        if case .started(let at, _) = event { lastRefreshAt = at }
     }
 
     /// Deep links: `opendispatch://add?url=<feed or site>` opens Add source prefilled with that URL;
