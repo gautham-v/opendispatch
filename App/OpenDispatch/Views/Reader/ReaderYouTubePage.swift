@@ -244,7 +244,7 @@ enum ReaderYouTubePage {
         #tmid #tplay{width:var(--p);height:var(--p)}
         #tmid #tplay svg{width:42%;height:42%}
         #tplay .off-play{margin-left:6%}
-        #tclose,#tcc,#tspeed,#tfs{position:absolute;width:var(--cb);height:var(--cb)}
+        #tpip,#tclose,#tcc,#tspeed,#tfs{position:absolute;width:var(--cb);height:var(--cb)}
         #tclose{left:var(--m);top:var(--m)}
         #tcc{right:var(--m);top:var(--m)}
         #tspeed{right:var(--m);bottom:calc(var(--m) + var(--ph) + 12px);font-weight:650;font-size:calc(var(--ts) - 3px);
