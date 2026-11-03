@@ -237,7 +237,7 @@ struct ItemListView: View {
                 // SwiftUI keeps the rows on screen in place when rows land above them, except at the very top,
                 // where it keeps the top edge: put the old first row back at the top.
                 // (Not while the Start here board is up: the list is filling for the first time.)
-                if scrollEdge.atTop, !model.isStartHereUp, let first = old.first, first != new.first, new.contains(first) {
+                if scrollEdge.atTop, !newRows.followsTop, !model.isStartHereUp, let first = old.first, first != new.first, new.contains(first) {
                     proxy.scrollTo(first, anchor: .top)
                 }
                 #else
@@ -250,12 +250,26 @@ struct ItemListView: View {
             .overlay(alignment: .top) {
                 NewRowsPill(rows: newRows, isPhone: isPhone) {
                     newRows.clear()
+                    if model.isRefreshing {
+                        newRows.followTop()
+                        #if os(iOS)
+                        listAnchor.followTop()
+                        #endif
+                    }
                     withAnimation(.smooth(duration: 0.35)) { scrollToTop(proxy, firstID: model.items.first?.id) }
                 }
                 .padding(.top, pillTop)
                 .modifier(MutedListPillInset(isPhone: isPhone))
             }
             .background { HighlightFollower(proxy: proxy) }
+            .background {
+                RefreshEndWatcher {
+                    newRows.stopFollowingTop()
+                    #if os(iOS)
+                    listAnchor.stopFollowingTop()
+                    #endif
+                }
+            }
         }
     }
 
@@ -638,7 +652,7 @@ private struct RowMarks<Content: View>: View {
         content(RowMarkState(
             selected: selected,
             secondary: secondary,
-            openInTab: !selected && !secondary && model.openItemIDs.contains(id),
+            openInTab: !selected && !secondary && model.itemIDsInTabs.contains(id),
             divider: previousID != nil && !selected && !secondary && previousID != highlighted && previousID != secondaryID,
             read: entry?.isRead ?? false,
             progress: entry?.progress,
@@ -658,6 +672,18 @@ private final class ScrollEdge {
     var atTop = true
 }
 #endif
+
+/// Tells when a refresh ends. A view of its own so the list body doesn't read `isRefreshing`.
+private struct RefreshEndWatcher: View {
+    let ended: () -> Void
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Color.clear.onChange(of: model.isRefreshing) { _, refreshing in
+            if !refreshing { ended() }
+        }
+    }
+}
 
 /// A row's hover-dependent part, so a hover change re-evaluates the rows on screen that read it (the
 /// hovered row, and the one below it for its divider) instead of the whole list.

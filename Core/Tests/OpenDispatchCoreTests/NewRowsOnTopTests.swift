@@ -63,6 +63,12 @@ import Testing
         #expect(r.rows == [2, 3, 1, 8, 7])
     }
 
+    @Test func aRowStoredBetweenTheTwoReadsIsNewOnce() {
+        var layout = loaded(5)
+        #expect(arrange(&layout, page: [7, 1], previous: [1], newest: 6).arrived == [7])
+        #expect(arrange(&layout, page: [7, 1], previous: [7, 1], newest: 7).arrived.isEmpty)
+    }
+
     @Test func aRowThatComesBackFollowsItsNeighbourInTheRanking() {
         var layout = loaded(5)
         let r = arrange(&layout, page: [1, 4, 2, 3], previous: [1, 2, 3], newest: 5)

@@ -560,7 +560,11 @@ final class AppModel {
     /// The other pane's item in split view, which the list marks more lightly.
     var secondaryHighlightedItemID: Int64? { isSplit ? activeItem(inPane: 1 - focusedPane)?.id : nil }
 
-    /// Items open in some tab, shown or not (the list marks the ones in background tabs).
+    /// Items a tab is on, shown or not (the list marks the ones in background tabs).
+    var itemIDsInTabs: Set<Int64> {
+        Set(panes.flatMap { $0.tabs.compactMap(\.itemID) })
+    }
+
     /// The items the tabs show, or show again on Back or Forward.
     var openItemIDs: Set<Int64> {
         Set(panes.flatMap { $0.tabs.flatMap { [$0.itemID] + ($0.back + $0.forward).map(\.itemID) }.compactMap { $0 } })

@@ -25,7 +25,8 @@ public struct NewRowsOnTop: Sendable {
     /// item stored, read before the page. `arrived` is the rows new since the last call.
     public mutating func arrange<Row>(page: [Row], previous: [Int64], newestID: Int64?, id: (Row) -> Int64) -> (rows: [Row], arrived: Set<Int64>) {
         let known = newestKnownID
-        if let newestID { newestKnownID = max(newestID, known ?? newestID) }
+        // The page may hold a row stored after `newestID` was read.
+        newestKnownID = ([known, newestID] + page.map { Optional(id($0)) }).compactMap { $0 }.max()
         let arrived = known.map { known in Set(page.map(id).filter { $0 > known }) } ?? []
 
         var kept = previous

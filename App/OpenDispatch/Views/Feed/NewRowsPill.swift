@@ -17,14 +17,34 @@ import UIKit
     @ObservationIgnored private var settlingUntil = Date.distantPast
     /// Pull to refresh: the new rows show at the top, so there is nothing to point at.
     @ObservationIgnored private var revealingUntil = Date.distantPast
+    /// The pill was clicked during a refresh: until it ends, rows landing while the list is at the top show there, rather
+    /// than behind another pill for each reload. The rows that have.
+    @ObservationIgnored private(set) var followsTop = false
+    @ObservationIgnored private var followed: Set<Int64> = []
 
     /// A reload added `ids`: the ones above the row that was first on screen go in the pill.
     func arrived(_ ids: Set<Int64>, in items: [FeedItem]) {
         guard !ids.isEmpty, Date() >= revealingUntil else { return }
         let end = topID.flatMap { id in items.firstIndex { $0.id == id } } ?? items.count
+        if followsTop, items.prefix(end).allSatisfy({ ids.contains($0.id) || followed.contains($0.id) }) {
+            followed.formUnion(ids)
+            return
+        }
         let pending = Set(above.map(\.id)).union(ids)
         above = items.prefix(end).filter { pending.contains($0.id) }
-        settlingUntil = Date().addingTimeInterval(0.5)
+        // Scrolling to the top has to be heard, or the pill stays when the list gets there.
+        if !followsTop { settlingUntil = Date().addingTimeInterval(0.5) }
+    }
+
+    func followTop() {
+        followsTop = true
+        followed = []
+        settlingUntil = .distantPast
+    }
+
+    func stopFollowingTop() {
+        followsTop = false
+        followed = []
     }
 
     /// The first item row on screen changed: new rows from there down are on screen or below it.
@@ -148,12 +168,22 @@ private struct PillBackground: ViewModifier {
     /// than recorded again, until then or until a finger moves the list.
     private var holdUntil = Date.distantPast
     private var revealUntil = Date.distantPast
+    /// See `NewRows.followsTop`.
+    private var followsTop = false
 
     /// The ids the list's rows are being built with. Called from the list's body, so it lands just before the
     /// collection view updates.
     func expect(_ ids: [Int64]) { expected = ids }
 
     func reveal(until date: Date) { revealUntil = date }
+
+    /// The list is about to scroll to the top (`revealUntil` covers the way there), and stays revealing while it's there.
+    func followTop() {
+        followsTop = true
+        revealUntil = Date().addingTimeInterval(0.5)
+    }
+
+    func stopFollowingTop() { followsTop = false }
 
     func attach(_ cv: UICollectionView) {
         guard collectionView !== cv else { return }
@@ -188,7 +218,8 @@ private struct PillBackground: ViewModifier {
 
     private func landed(_ cv: UICollectionView) {
         shown = expected
-        if isPaused || Date() < revealUntil {
+        let atTop = cv.contentOffset.y <= -cv.adjustedContentInset.top + 1
+        if isPaused || Date() < revealUntil || (followsTop && atTop) {
             record(cv)
         } else {
             holdUntil = Date().addingTimeInterval(0.6)
